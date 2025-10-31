@@ -228,7 +228,7 @@ main {
   display: grid;
   place-items: center;
   font-size: 1rem;
-  color: rgba(15, 23, 42, 0.85);
+  color: var(--dial-text, rgba(15, 23, 42, 0.85));
   overflow: hidden;
   box-shadow: var(--dial-shadow);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
@@ -237,7 +237,7 @@ main {
 
 body.dark .tile-icon {
   background: var(--dial-color, var(--dial-bg-dark));
-  color: rgba(15, 23, 42, 0.9);
+  color: var(--dial-text, rgba(15, 23, 42, 0.9));
   box-shadow: var(--dial-shadow-dark);
 }
 
@@ -446,9 +446,5 @@ body.dark .hint {
   .grid {
     grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
     gap: clamp(1rem, 4vw, 1.5rem);
-  }
-
-  .title {
-    font-size: clamp(1.2rem, 4vw, 1.6rem);
   }
 }
