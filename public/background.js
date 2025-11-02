@@ -1,11 +1,14 @@
-const FOLDER_TITLE = "Bookmarked Dial";
+const FOLDER_TITLE = "Bookmark Dial";
 const STORAGE_KEY = "speedDialFolderId";
+const PREF_KEY = "dialPreferences";
+const PREF_VERSION = 1;
 
 async function ensureSpeedDialFolder() {
   const stored = await chrome.storage.sync.get(STORAGE_KEY);
   if (stored[STORAGE_KEY]) {
     const folder = await lookupFolderById(stored[STORAGE_KEY]);
     if (folder && folder.title === FOLDER_TITLE) {
+      await seedDialPreferences(folder.id);
       return folder.id;
     }
   }
@@ -13,6 +16,7 @@ async function ensureSpeedDialFolder() {
   const existing = await findFolderByTitle(FOLDER_TITLE);
   if (existing) {
     await chrome.storage.sync.set({ [STORAGE_KEY]: existing.id });
+    await seedDialPreferences(existing.id);
     return existing.id;
   }
 
@@ -21,6 +25,7 @@ async function ensureSpeedDialFolder() {
     title: FOLDER_TITLE,
   });
   await chrome.storage.sync.set({ [STORAGE_KEY]: created.id });
+  await seedDialPreferences(created.id);
   return created.id;
 }
 
@@ -51,7 +56,7 @@ async function findFolderByTitle(title) {
       }
     }
   } catch (error) {
-    console.warn("Bookmarked Dial: searching folder failed", error);
+    console.warn("Bookmark Dial: searching folder failed", error);
   }
   return null;
 }
@@ -65,15 +70,55 @@ async function handleRemovedFolder(id) {
   await ensureSpeedDialFolder();
 }
 
+async function seedDialPreferences(folderId) {
+  try {
+    const stored = await chrome.storage.sync.get(PREF_KEY);
+    const prefs = stored?.[PREF_KEY];
+    const next = prefs && typeof prefs === "object" ? { ...prefs } : {};
+    const selectedIds = Array.isArray(next.folderSelection?.selectedIds)
+      ? [...next.folderSelection.selectedIds]
+      : [];
+    if (!selectedIds.includes(folderId)) {
+      selectedIds.push(folderId);
+    }
+    const expandedIds = Array.isArray(next.folderSelection?.expandedIds)
+      ? [...next.folderSelection.expandedIds]
+      : [];
+    next.folderSelection = {
+      selectedIds,
+      expandedIds,
+    };
+    if (!next.theme) {
+      next.theme = "system";
+    }
+    if (!next.accent) {
+      next.accent = "cobalt";
+    }
+    const fallbackBackground = { mode: "gradient", gradientId: "aurora" };
+    if (!next.background) {
+      next.background = fallbackBackground;
+    } else {
+      next.background = {
+        mode: next.background.mode === "custom" ? "custom" : "gradient",
+        gradientId: next.background.gradientId || fallbackBackground.gradientId,
+      };
+    }
+    next.version = typeof next.version === "number" ? next.version : PREF_VERSION;
+    await chrome.storage.sync.set({ [PREF_KEY]: next });
+  } catch (error) {
+    console.warn("Bookmark Dial: failed to seed dial preferences", error);
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   ensureSpeedDialFolder().catch((error) => {
-    console.error("Bookmarked Dial: failed to prepare folder on install", error);
+    console.error("Bookmark Dial: failed to prepare folder on install", error);
   });
 });
 
 chrome.runtime.onStartup.addListener(() => {
   ensureSpeedDialFolder().catch((error) => {
-    console.error("Bookmarked Dial: failed to prepare folder on startup", error);
+    console.error("Bookmark Dial: failed to prepare folder on startup", error);
   });
 });
 
@@ -82,7 +127,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     ensureSpeedDialFolder()
       .then((folderId) => sendResponse({ folderId }))
       .catch((error) => {
-        console.error("Bookmarked Dial: getFolderId error", error);
+        console.error("Bookmark Dial: getFolderId error", error);
         sendResponse({ error: error?.message || "Folder unavailable" });
       });
     return true;
@@ -92,7 +137,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       ensureSpeedDialFolder()
         .then((folderId) => sendResponse({ folderId }))
         .catch((error) => {
-          console.error("Bookmarked Dial: reset error", error);
+          console.error("Bookmark Dial: reset error", error);
           sendResponse({ error: error?.message || "Unable to reset" });
         });
     });
@@ -108,6 +153,6 @@ chrome.bookmarks.onRemoved.addListener(async (id, removeInfo) => {
   try {
     await handleRemovedFolder(id);
   } catch (error) {
-    console.error("Bookmarked Dial: handleRemovedFolder failed", error);
+    console.error("Bookmark Dial: handleRemovedFolder failed", error);
   }
 });

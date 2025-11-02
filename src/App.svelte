@@ -1,63 +1,974 @@
 <script>
-  import { onDestroy, onMount } from "svelte";
+  import { onMount, tick } from "svelte";
+  import FolderSelectionModal from "./components/FolderSelectionModal.svelte";
+  import {
+    bookmarkCache,
+    bootstrapBookmarkCache,
+    ensureChildrenLoaded as ensureCacheChildrenLoaded,
+    loadSubtree as loadCacheSubtree,
+    getBookmarkCacheState,
+    getDescendantFolderIds,
+    getFolderPath,
+    applyCreatedNode,
+    applyChangedNode,
+    applyMovedNode,
+    applyRemovedNode,
+    buildSearchIndex,
+  } from "./lib/bookmarkCache";
 
   const STATUS_MESSAGES = {
-    loading: "Loading Bookmarked Dial…",
+    loading: "Loading Bookmark Dial…",
     empty: "No bookmarks yet. Add shortcuts from this page or the bookmark manager.",
-    error: "Bookmarked Dial folder is unavailable. Try reopening the tab or reinstalling the extension.",
+    error: "Bookmark Dial folder is unavailable. Try reopening the tab or reinstalling the extension.",
   };
 
   const FAVICON_SIZE = 64;
   const BACKGROUND_KEY = "customBackgroundImage";
+  const SETTINGS_KEY = "uiPreferences";
+  const SYNC_SETTINGS_KEY = "dialPreferences";
+  const STORAGE_VERSION = 1;
+  const DEFAULT_FOLDER_SELECTION = {
+    selectedIds: [],
+    expandedIds: [],
+  };
   const MAX_BACKGROUND_BYTES = 4 * 1024 * 1024;
+
+  const THEME_OPTIONS = [
+    { id: "dark", label: "Dark" },
+    { id: "light", label: "Light" },
+    { id: "system", label: "System" },
+  ];
+
+  const ACCENT_OPTIONS = [
+    {
+      id: "cobalt",
+      label: "Cobalt",
+      colors: {
+        base: "#2563eb",
+        contrast: "#f8fafc",
+        soft: "rgba(37, 99, 235, 0.14)",
+        border: "rgba(37, 99, 235, 0.45)",
+      },
+    },
+    {
+      id: "violet",
+      label: "Violet",
+      colors: {
+        base: "#8b5cf6",
+        contrast: "#faf5ff",
+        soft: "rgba(139, 92, 246, 0.16)",
+        border: "rgba(139, 92, 246, 0.45)",
+      },
+    },
+    {
+      id: "emerald",
+      label: "Emerald",
+      colors: {
+        base: "#059669",
+        contrast: "#ecfdf5",
+        soft: "rgba(5, 150, 105, 0.14)",
+        border: "rgba(5, 150, 105, 0.45)",
+      },
+    },
+    {
+      id: "amber",
+      label: "Amber",
+      colors: {
+        base: "#d97706",
+        contrast: "#fffbeb",
+        soft: "rgba(217, 119, 6, 0.18)",
+        border: "rgba(217, 119, 6, 0.5)",
+      },
+    },
+    {
+      id: "rose",
+      label: "Rose",
+      colors: {
+        base: "#e11d48",
+        contrast: "#fff1f2",
+        soft: "rgba(225, 29, 72, 0.16)",
+        border: "rgba(225, 29, 72, 0.45)",
+      },
+    },
+    {
+      id: "slate",
+      label: "Slate",
+      colors: {
+        base: "#475569",
+        contrast: "#f8fafc",
+        soft: "rgba(71, 85, 105, 0.18)",
+        border: "rgba(71, 85, 105, 0.5)",
+      },
+    },
+    {
+      id: "sky",
+      label: "Sky",
+      colors: {
+        base: "#0284c7",
+        contrast: "#e0f2fe",
+        soft: "rgba(2, 132, 199, 0.16)",
+        border: "rgba(2, 132, 199, 0.45)",
+      },
+    },
+    {
+      id: "blush",
+      label: "Blush",
+      colors: {
+        base: "#ec4899",
+        contrast: "#fff0f6",
+        soft: "rgba(236, 72, 153, 0.18)",
+        border: "rgba(236, 72, 153, 0.5)",
+      },
+    },
+    {
+      id: "moss",
+      label: "Moss",
+      colors: {
+        base: "#4d7c0f",
+        contrast: "#ecfccb",
+        soft: "rgba(77, 124, 15, 0.18)",
+        border: "rgba(77, 124, 15, 0.5)",
+      },
+    },
+    {
+      id: "bronze",
+      label: "Bronze",
+      colors: {
+        base: "#b45309",
+        contrast: "#fff7ed",
+        soft: "rgba(180, 83, 9, 0.2)",
+        border: "rgba(180, 83, 9, 0.55)",
+      },
+    },
+    {
+      id: "orchid",
+      label: "Orchid",
+      colors: {
+        base: "#c026d3",
+        contrast: "#fdf4ff",
+        soft: "rgba(192, 38, 211, 0.18)",
+        border: "rgba(192, 38, 211, 0.5)",
+      },
+    },
+    {
+      id: "mint",
+      label: "Mint",
+      colors: {
+        base: "#14b8a6",
+        contrast: "#e0fefa",
+        soft: "rgba(20, 184, 166, 0.16)",
+        border: "rgba(20, 184, 166, 0.46)",
+      },
+    },
+    {
+      id: "graphite",
+      label: "Graphite",
+      colors: {
+        base: "#1f2937",
+        contrast: "#f8fafc",
+        soft: "rgba(31, 41, 55, 0.22)",
+        border: "rgba(31, 41, 55, 0.6)",
+      },
+    },
+    {
+      id: "sunset",
+      label: "Sunset",
+      colors: {
+        base: "#ea580c",
+        contrast: "#fff7ed",
+        soft: "rgba(234, 88, 12, 0.18)",
+        border: "rgba(234, 88, 12, 0.52)",
+      },
+    },
+    {
+      id: "glacier",
+      label: "Glacier",
+      colors: {
+        base: "#0ea5e9",
+        contrast: "#f0f9ff",
+        soft: "rgba(14, 165, 233, 0.16)",
+        border: "rgba(14, 165, 233, 0.45)",
+      },
+    },
+    {
+      id: "amethyst",
+      label: "Amethyst",
+      colors: {
+        base: "#6d28d9",
+        contrast: "#f5f3ff",
+        soft: "rgba(109, 40, 217, 0.18)",
+        border: "rgba(109, 40, 217, 0.5)",
+      },
+    },
+    {
+      id: "sand",
+      label: "Sand",
+      colors: {
+        base: "#ca8a04",
+        contrast: "#fffbeb",
+        soft: "rgba(202, 138, 4, 0.2)",
+        border: "rgba(202, 138, 4, 0.5)",
+      },
+    },
+    {
+      id: "cranberry",
+      label: "Cranberry",
+      colors: {
+        base: "#be123c",
+        contrast: "#fff1f5",
+        soft: "rgba(190, 18, 60, 0.18)",
+        border: "rgba(190, 18, 60, 0.5)",
+      },
+    },
+  ];
+
+  const GRADIENT_OPTIONS = [
+    {
+      id: "aurora",
+      label: "Aurora",
+      gradients: {
+        light: "linear-gradient(135deg, #d8b4fe 0%, #6366f1 50%, #22d3ee 100%)",
+        dark: "linear-gradient(135deg, #312e81 0%, #1e3a8a 50%, #0f172a 100%)",
+      },
+      accent: "violet",
+    },
+    {
+      id: "sunrise",
+      label: "Sunrise",
+      gradients: {
+        light: "linear-gradient(135deg, #fef3c7 0%, #fdba74 50%, #f97316 100%)",
+        dark: "linear-gradient(135deg, #7c2d12 0%, #c2410c 45%, #ea580c 100%)",
+      },
+      accent: "amber",
+    },
+    {
+      id: "forest",
+      label: "Forest",
+      gradients: {
+        light: "linear-gradient(135deg, #bbf7d0 0%, #34d399 50%, #0f766e 100%)",
+        dark: "linear-gradient(135deg, #064e3b 0%, #059669 50%, #0f172a 100%)",
+      },
+      accent: "emerald",
+    },
+    {
+      id: "ocean",
+      label: "Ocean",
+      gradients: {
+        light: "linear-gradient(135deg, #bae6fd 0%, #38bdf8 50%, #0ea5e9 100%)",
+        dark: "linear-gradient(135deg, #0c4a6e 0%, #0369a1 50%, #082f49 100%)",
+      },
+      accent: "sky",
+    },
+    {
+      id: "twilight",
+      label: "Twilight",
+      gradients: {
+        light: "linear-gradient(135deg, #fecdd3 0%, #fda4af 50%, #fb7185 100%)",
+        dark: "linear-gradient(135deg, #7f1d1d 0%, #be123c 50%, #9f1239 100%)",
+      },
+      accent: "orchid",
+    },
+    {
+      id: "slate",
+      label: "Slate",
+      gradients: {
+        light: "linear-gradient(135deg, #e2e8f0 0%, #cbd5f5 50%, #94a3b8 100%)",
+        dark: "linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #020617 100%)",
+      },
+      accent: "slate",
+    },
+    {
+      id: "blossom",
+      label: "Blossom",
+      gradients: {
+        light: "linear-gradient(135deg, #ffe4e6 0%, #fbcfe8 45%, #f472b6 100%)",
+        dark: "linear-gradient(135deg, #831843 0%, #9d174d 50%, #701a75 100%)",
+      },
+      accent: "blush",
+    },
+    {
+      id: "lagoon",
+      label: "Lagoon",
+      gradients: {
+        light: "linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 40%, #5eead4 100%)",
+        dark: "linear-gradient(135deg, #022c22 0%, #0d9488 45%, #14b8a6 100%)",
+      },
+      accent: "mint",
+    },
+    {
+      id: "ember",
+      label: "Ember",
+      gradients: {
+        light: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 40%, #fb7185 100%)",
+        dark: "linear-gradient(135deg, #450a0a 0%, #9f1239 50%, #be123c 100%)",
+      },
+      accent: "rose",
+    },
+    {
+      id: "lilac",
+      label: "Lilac",
+      gradients: {
+        light: "linear-gradient(135deg, #f5f3ff 0%, #ede9fe 45%, #d8b4fe 100%)",
+        dark: "linear-gradient(135deg, #312e81 0%, #5b21b6 50%, #7c3aed 100%)",
+      },
+      accent: "violet",
+    },
+    {
+      id: "zenith",
+      label: "Zenith",
+      gradients: {
+        light: "linear-gradient(135deg, #e0f2fe 0%, #dbeafe 45%, #818cf8 100%)",
+        dark: "linear-gradient(135deg, #1e293b 0%, #1f3b8a 45%, #3730a3 100%)",
+      },
+      accent: "cobalt",
+    },
+    {
+      id: "sage",
+      label: "Sage",
+      gradients: {
+        light: "linear-gradient(135deg, #ecfccb 0%, #bbf7d0 45%, #84cc16 100%)",
+        dark: "linear-gradient(135deg, #052e16 0%, #166534 45%, #15803d 100%)",
+      },
+      accent: "moss",
+    },
+    {
+      id: "velvet",
+      label: "Velvet",
+      gradients: {
+        light: "linear-gradient(135deg, #fdf4ff 0%, #f5d0fe 45%, #f0abfc 100%)",
+        dark: "linear-gradient(135deg, #4a044e 0%, #6b21a8 45%, #86198f 100%)",
+      },
+      accent: "orchid",
+    },
+    {
+      id: "citrus",
+      label: "Citrus",
+      gradients: {
+        light: "linear-gradient(135deg, #fefce8 0%, #fef08a 45%, #facc15 100%)",
+        dark: "linear-gradient(135deg, #422006 0%, #854d0e 50%, #b45309 100%)",
+      },
+      accent: "amber",
+    },
+    {
+      id: "glacier",
+      label: "Glacier",
+      gradients: {
+        light: "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 45%, #bae6fd 100%)",
+        dark: "linear-gradient(135deg, #082f49 0%, #0c4a6e 45%, #0284c7 100%)",
+      },
+      accent: "sky",
+    },
+    {
+      id: "terracotta",
+      label: "Terracotta",
+      gradients: {
+        light: "linear-gradient(135deg, #fff7ed 0%, #fed7aa 45%, #f97316 100%)",
+        dark: "linear-gradient(135deg, #431407 0%, #7c2d12 45%, #9a3412 100%)",
+      },
+      accent: "bronze",
+    },
+    {
+      id: "nocturne",
+      label: "Nocturne",
+      gradients: {
+        light: "linear-gradient(135deg, #ede9fe 0%, #c7d2fe 45%, #4338ca 100%)",
+        dark: "linear-gradient(135deg, #020617 0%, #111827 45%, #312e81 100%)",
+      },
+      accent: "slate",
+    },
+    {
+      id: "horizon",
+      label: "Horizon",
+      gradients: {
+        light: "linear-gradient(135deg, #fef3c7 0%, #fdba74 40%, #60a5fa 100%)",
+        dark: "linear-gradient(135deg, #451a03 0%, #9a3412 45%, #1d4ed8 100%)",
+      },
+      accent: "cobalt",
+    },
+  ];
+
+  const DEFAULT_GRADIENT = GRADIENT_OPTIONS[0];
+  const DEFAULT_ACCENT_ID =
+    DEFAULT_GRADIENT?.accent && ACCENT_OPTIONS.some((option) => option.id === DEFAULT_GRADIENT.accent)
+      ? DEFAULT_GRADIENT.accent
+      : ACCENT_OPTIONS[0].id;
+
+  const DEFAULT_SETTINGS = {
+    theme: "system",
+    accent: DEFAULT_ACCENT_ID,
+    background: {
+      mode: "gradient",
+      gradientId: DEFAULT_GRADIENT?.id ?? GRADIENT_OPTIONS[0].id,
+    },
+  };
+
+  const DEFAULT_SYNC_PREFERENCES = {
+    ...DEFAULT_SETTINGS,
+    folderSelection: { ...DEFAULT_FOLDER_SELECTION },
+    version: STORAGE_VERSION,
+  };
+
+  const GRADIENT_PREVIEW_COUNT = 6;
+  const ACCENT_PREVIEW_COUNT = 10;
 
   const realChrome = typeof chrome !== "undefined" ? chrome : null;
   const chromeApi = realChrome?.runtime?.sendMessage ? realChrome : createMockChrome();
+  const isExtensionContext = Boolean(realChrome?.runtime?.id);
+  const shouldPersistPreferences = Boolean(realChrome?.storage?.local) && isExtensionContext;
+  const shouldSyncPreferences = Boolean(realChrome?.storage?.sync) && isExtensionContext;
 
   let statusMessage = STATUS_MESSAGES.loading;
   let statusTone = "info";
   let bookmarks = [];
   let bookmarkIdSet = new Set();
-  let folderId = null;
+  let defaultFolderId = null;
+  let selectedFolderIds = new Set();
+  let expandedFolderIds = new Set();
+  let loadingFolderIds = new Set();
+  let hasHydratedSelection = false;
+  let folderModalOpen = false;
+  let folderSearchQuery = "";
+  let folderSearchMatches = new Set();
+  let visibleFolderIds = null;
+  let folderSummary = [];
+  let folderBookmarkCounts = new Map();
+  let combinedBookmarkCount = 0;
+  let draftSelectedFolderIds = null;
+  let draftExpandedFolderIds = null;
+  let draftFolderSummary = [];
+  let draftBookmarkCounts = new Map();
+  let draftCombinedBookmarkCount = 0;
+  let selectionNeedsPersist = false;
+  let effectiveExpandedFolderIds = new Set();
+  let refreshNonce = 0;
+  let draftPreviewNonce = 0;
   let draggingId = null;
   let backgroundUrl = "";
   let backgroundDialog;
   let backgroundInput;
+  let settingsButton;
+  let settingsDrawer;
+  let settings = createDefaultSettings();
+  let settingsOpen = false;
+  let loadingSettings = true;
+  let hasHydratedSettings = false;
+  let needsInitialPersist = false;
+  let showAllGradients = false;
+  let showAllAccents = false;
+  let accentOptionsOrdered = [...ACCENT_OPTIONS];
+  let gradientOptionsOrdered = [...GRADIENT_OPTIONS];
+
+  let persistSettingsHandle = null;
+  let mediaQuery = null;
+  let removeSystemThemeListener = null;
 
   const cleanupFns = [];
 
   onMount(() => {
-    applyColorScheme();
-    loadBackground();
-    initialize();
+    (async () => {
+      try {
+        await loadSettings();
+      } catch (error) {
+        console.error("Bookmark Dial: failed to load settings", error);
+        settings = createDefaultSettings();
+        needsInitialPersist = shouldPersistPreferences;
+        applyTheme(settings.theme);
+        applyAccent(settings.accent);
+        applyGradient(settings.background.gradientId);
+      }
+
+      try {
+        await loadBackground();
+      } catch (error) {
+        console.error("Bookmark Dial: failed to load background", error);
+      }
+
+      loadingSettings = false;
+      initialize();
+    })();
+
+    if (typeof window !== "undefined") {
+      const keydownHandler = (event) => {
+        if (event.key === "Escape" && settingsOpen) {
+          closeSettings();
+        }
+      };
+      window.addEventListener("keydown", keydownHandler);
+      cleanupFns.push(() => window.removeEventListener("keydown", keydownHandler));
+    }
+
+    if (chromeApi?.storage?.onChanged?.addListener) {
+      const storageListener = (changes, areaName) => {
+        if (areaName !== "sync" && areaName !== "local") {
+          return;
+        }
+        const key = areaName === "sync" ? SYNC_SETTINGS_KEY : SETTINGS_KEY;
+        const changedEntry = changes[key];
+        if (!changedEntry || !changedEntry.newValue) {
+          return;
+        }
+        handleExternalPreferences(changedEntry.newValue);
+      };
+      chromeApi.storage.onChanged.addListener(storageListener);
+      cleanupFns.push(() => chromeApi.storage.onChanged.removeListener(storageListener));
+    }
 
     return () => {
+      if (persistSettingsHandle) {
+        clearTimeout(persistSettingsHandle);
+      }
+      if (typeof document !== "undefined") {
+        document.body.classList.remove("settings-open");
+      }
       cleanupFns.forEach((fn) => fn?.());
     };
   });
 
-  async function initialize() {
-    try {
-      folderId = await requestFolderId();
-      subscribeBookmarkEvents();
-      await refreshBookmarks();
-    } catch (error) {
-      console.error("Bookmarked Dial: initialization failed", error);
-      setStatus(STATUS_MESSAGES.error, "error");
+  function createDefaultSettings() {
+    return {
+      theme: DEFAULT_SETTINGS.theme,
+      accent: DEFAULT_SETTINGS.accent,
+      background: { ...DEFAULT_SETTINGS.background },
+    };
+  }
+
+  function createDefaultFolderSelection() {
+    return {
+      selectedIds: [...DEFAULT_FOLDER_SELECTION.selectedIds],
+      expandedIds: [...DEFAULT_FOLDER_SELECTION.expandedIds],
+    };
+  }
+
+  function normalizeTheme(theme) {
+    return THEME_OPTIONS.some((option) => option.id === theme) ? theme : DEFAULT_SETTINGS.theme;
+  }
+
+  function normalizeAccent(accent) {
+    return ACCENT_OPTIONS.some((option) => option.id === accent) ? accent : DEFAULT_SETTINGS.accent;
+  }
+
+  function normalizeGradient(gradientId) {
+    return GRADIENT_OPTIONS.some((option) => option.id === gradientId)
+      ? gradientId
+      : DEFAULT_SETTINGS.background.gradientId;
+  }
+
+  function arraysEqual(a = [], b = []) {
+    if (a.length !== b.length) {
+      return false;
+    }
+    return a.every((value, index) => value === b[index]);
+  }
+
+  function normalizeFolderSelection(selection = {}) {
+    const selected = Array.isArray(selection.selectedIds) ? selection.selectedIds.filter(Boolean) : [];
+    const expanded = Array.isArray(selection.expandedIds) ? selection.expandedIds.filter(Boolean) : [];
+    return {
+      selectedIds: Array.from(new Set(selected)),
+      expandedIds: Array.from(new Set(expanded)),
+    };
+  }
+
+  function setsEqual(a, b) {
+    if (a.size !== b.size) {
+      return false;
+    }
+    for (const value of a) {
+      if (!b.has(value)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function mergeStoredPreferences(stored = {}) {
+    const theme = normalizeTheme(stored.theme);
+    const accent = normalizeAccent(stored.accent);
+    const background = stored.background ?? {};
+    const mode = background.mode === "custom" ? "custom" : "gradient";
+    const gradientId = normalizeGradient(background.gradientId);
+    const folderSelection = normalizeFolderSelection(stored.folderSelection);
+    const selectionChanged =
+      !arraysEqual(folderSelection.selectedIds, stored.folderSelection?.selectedIds ?? []) ||
+      !arraysEqual(folderSelection.expandedIds, stored.folderSelection?.expandedIds ?? []);
+    const preferenceChanged =
+      theme !== stored.theme ||
+      accent !== stored.accent ||
+      mode !== (stored.background?.mode ?? DEFAULT_SETTINGS.background.mode) ||
+      gradientId !== (stored.background?.gradientId ?? DEFAULT_SETTINGS.background.gradientId);
+
+    return {
+      settings: {
+        theme,
+        accent,
+        background: {
+          mode,
+          gradientId,
+        },
+      },
+      folderSelection,
+      changed: preferenceChanged || selectionChanged || (stored.version ?? STORAGE_VERSION) !== STORAGE_VERSION,
+    };
+  }
+
+  function getAccent(accentId) {
+    return ACCENT_OPTIONS.find((option) => option.id === accentId) ?? ACCENT_OPTIONS[0];
+  }
+
+  function getGradient(gradientId) {
+    return GRADIENT_OPTIONS.find((option) => option.id === gradientId) ?? GRADIENT_OPTIONS[0];
+  }
+
+  function prioritizeOnCollapse(options, selectedId) {
+    const base = [...options];
+    if (!selectedId) {
+      return base;
+    }
+    const index = base.findIndex((option) => option.id === selectedId);
+    if (index <= 0) {
+      return base;
+    }
+    const [selected] = base.splice(index, 1);
+    return [selected, ...base];
+  }
+
+  function collapseAccentOptions() {
+    accentOptionsOrdered = prioritizeOnCollapse(ACCENT_OPTIONS, settings?.accent);
+    showAllAccents = false;
+  }
+
+  function expandAccentOptions() {
+    showAllAccents = true;
+  }
+
+  function toggleAccentOptions() {
+    if (showAllAccents) {
+      collapseAccentOptions();
+    } else {
+      expandAccentOptions();
     }
   }
 
-  function applyColorScheme() {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+  function collapseGradientOptions() {
+    gradientOptionsOrdered = prioritizeOnCollapse(
+      GRADIENT_OPTIONS,
+      settings?.background?.mode === "gradient" ? settings?.background?.gradientId : null
+    );
+    showAllGradients = false;
+  }
+
+  function expandGradientOptions() {
+    showAllGradients = true;
+  }
+
+  function toggleGradientOptions() {
+    if (showAllGradients) {
+      collapseGradientOptions();
+    } else {
+      expandGradientOptions();
+    }
+  }
+
+  $: gradientPreviewSet = new Set(
+    gradientOptionsOrdered.slice(0, GRADIENT_PREVIEW_COUNT).map((option) => option.id)
+  );
+  $: accentPreviewSet = new Set(
+    accentOptionsOrdered.slice(0, ACCENT_PREVIEW_COUNT).map((option) => option.id)
+  );
+
+  $: visibleGradientOptions = showAllGradients
+    ? gradientOptionsOrdered
+    : gradientOptionsOrdered.slice(0, GRADIENT_PREVIEW_COUNT);
+
+  $: visibleAccentOptions = showAllAccents
+    ? accentOptionsOrdered
+    : accentOptionsOrdered.slice(0, ACCENT_PREVIEW_COUNT);
+
+  $: if (!showAllAccents && settings.accent && !accentPreviewSet.has(settings.accent)) {
+    showAllAccents = true;
+  }
+
+  $: if (
+    !showAllGradients &&
+    settings.background.mode === "gradient" &&
+    settings.background.gradientId &&
+    !gradientPreviewSet.has(settings.background.gradientId)
+  ) {
+    showAllGradients = true;
+  }
+
+  function ensureMediaQuery() {
+    if (!mediaQuery && typeof window !== "undefined" && typeof window.matchMedia === "function") {
+      mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    }
+    return mediaQuery;
+  }
+
+  function applyTheme(themeChoice) {
+    if (typeof document === "undefined") {
       return;
     }
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    document.body.classList.toggle("dark", media.matches);
-    const handler = (event) => {
-      document.body.classList.toggle("dark", event.matches);
+    const normalized = normalizeTheme(themeChoice);
+    const media = ensureMediaQuery();
+
+    if (normalized === "system" && media) {
+      document.body.classList.toggle("dark", media.matches);
+      if (!removeSystemThemeListener) {
+        const handler = (event) => {
+          document.body.classList.toggle("dark", event.matches);
+        };
+        if (typeof media.addEventListener === "function") {
+          media.addEventListener("change", handler);
+          removeSystemThemeListener = () => media.removeEventListener("change", handler);
+        } else if (typeof media.addListener === "function") {
+          media.addListener(handler);
+          removeSystemThemeListener = () => media.removeListener(handler);
+        } else {
+          removeSystemThemeListener = null;
+        }
+        if (removeSystemThemeListener) {
+          cleanupFns.push(removeSystemThemeListener);
+        }
+      }
+    } else {
+      if (removeSystemThemeListener) {
+        removeSystemThemeListener();
+        removeSystemThemeListener = null;
+      }
+      document.body.classList.toggle("dark", normalized === "dark");
+    }
+
+    document.body.dataset.theme = normalized;
+  }
+
+  function applyAccent(accentId) {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const accent = getAccent(accentId);
+    const root = document.documentElement;
+    root.style.setProperty("--accent-color", accent.colors.base);
+    root.style.setProperty("--accent-color-contrast", accent.colors.contrast);
+    root.style.setProperty("--accent-color-soft", accent.colors.soft);
+    root.style.setProperty("--accent-color-border", accent.colors.border);
+  }
+
+  function applyGradient(gradientId) {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const gradient = getGradient(gradientId);
+    const root = document.documentElement;
+    root.style.setProperty("--page-background-light", gradient.gradients.light);
+    root.style.setProperty("--page-background-dark", gradient.gradients.dark);
+  }
+
+  function schedulePersistPreferences() {
+    if (!shouldPersistPreferences || !hasHydratedSettings || !hasHydratedSelection) {
+      return;
+    }
+    if (persistSettingsHandle) {
+      clearTimeout(persistSettingsHandle);
+    }
+    const payload = {
+      theme: settings.theme,
+      accent: settings.accent,
+      background: { ...settings.background },
+      folderSelection: {
+        selectedIds: Array.from(selectedFolderIds),
+        expandedIds: Array.from(expandedFolderIds),
+      },
+      version: STORAGE_VERSION,
     };
-    media.addEventListener("change", handler);
-    cleanupFns.push(() => media.removeEventListener("change", handler));
+    persistSettingsHandle = setTimeout(async () => {
+      persistSettingsHandle = null;
+      try {
+        const tasks = [chromeApi.storage.local.set({ [SETTINGS_KEY]: payload })];
+        if (shouldSyncPreferences) {
+          tasks.push(chromeApi.storage.sync.set({ [SYNC_SETTINGS_KEY]: payload }));
+        }
+        await Promise.all(tasks);
+      } catch (error) {
+        console.error("Bookmark Dial: failed to store preferences", error);
+      }
+    }, 120);
+  }
+
+  function closeSettings() {
+    if (!settingsOpen) {
+      return;
+    }
+    settingsOpen = false;
+    if (typeof document !== "undefined" && settingsDrawer) {
+      const activeElement = document.activeElement;
+      if (activeElement && settingsDrawer.contains(activeElement)) {
+        settingsButton?.focus();
+      }
+    }
+  }
+
+  function toggleSettings() {
+    settingsOpen = !settingsOpen;
+  }
+
+  function setThemeChoice(themeId) {
+    const normalized = normalizeTheme(themeId);
+    if (settings.theme === normalized) {
+      return;
+    }
+    settings = {
+      ...settings,
+      theme: normalized,
+    };
+  }
+
+  function setAccentChoice(accentId) {
+    const normalized = normalizeAccent(accentId);
+    if (settings.accent === normalized) {
+      return;
+    }
+    settings = {
+      ...settings,
+      accent: normalized,
+    };
+  }
+
+  function selectGradient(gradientId) {
+    const normalized = normalizeGradient(gradientId);
+    const gradient = getGradient(normalized);
+    const recommendedAccent =
+      gradient.accent && ACCENT_OPTIONS.some((option) => option.id === gradient.accent)
+        ? gradient.accent
+        : null;
+    const backgroundChanged =
+      settings.background.mode !== "gradient" || settings.background.gradientId !== normalized;
+    const nextAccent = recommendedAccent ? normalizeAccent(recommendedAccent) : settings.accent;
+    const accentChanged = Boolean(recommendedAccent) && nextAccent !== settings.accent;
+
+    if (!backgroundChanged && !accentChanged) {
+      return;
+    }
+    settings = {
+      ...settings,
+      accent: accentChanged ? nextAccent : settings.accent,
+      background: {
+        ...settings.background,
+        mode: "gradient",
+        gradientId: normalized,
+      },
+    };
+  }
+
+  async function showCustomBackgroundPicker() {
+    closeSettings();
+    await tick();
+    openBackgroundDialog();
+  }
+
+  async function loadSettings() {
+    needsInitialPersist = false;
+    selectionNeedsPersist = false;
+
+    if (!shouldPersistPreferences) {
+      settings = createDefaultSettings();
+      selectedFolderIds = new Set(DEFAULT_FOLDER_SELECTION.selectedIds);
+      expandedFolderIds = new Set(DEFAULT_FOLDER_SELECTION.expandedIds);
+      hasHydratedSelection = true;
+      applyTheme(settings.theme);
+      applyAccent(settings.accent);
+      applyGradient(settings.background.gradientId);
+      updateFolderSummary();
+      return;
+    }
+
+    let syncStored = {};
+    let localStored = {};
+    if (shouldSyncPreferences) {
+      try {
+        syncStored = await chromeApi.storage.sync.get(SYNC_SETTINGS_KEY);
+      } catch (error) {
+        console.warn("Bookmark Dial: failed to read sync preferences", error);
+      }
+    }
+    try {
+      localStored = await chromeApi.storage.local.get(SETTINGS_KEY);
+    } catch (error) {
+      console.warn("Bookmark Dial: failed to read local preferences", error);
+    }
+
+    let storedPreferences = syncStored?.[SYNC_SETTINGS_KEY];
+    let migratedFromLocal = false;
+    if (!storedPreferences && localStored?.[SETTINGS_KEY]) {
+      storedPreferences = localStored[SETTINGS_KEY];
+      migratedFromLocal = true;
+    }
+
+    const merged = mergeStoredPreferences(storedPreferences ?? DEFAULT_SYNC_PREFERENCES);
+    settings = merged.settings;
+    selectedFolderIds = new Set(
+      merged.folderSelection.selectedIds.length ? merged.folderSelection.selectedIds : DEFAULT_FOLDER_SELECTION.selectedIds
+    );
+    expandedFolderIds = new Set(merged.folderSelection.expandedIds);
+    hasHydratedSelection = true;
+    needsInitialPersist = merged.changed || migratedFromLocal;
+    selectionNeedsPersist = merged.changed || migratedFromLocal;
+
+    applyTheme(settings.theme);
+    applyAccent(settings.accent);
+    applyGradient(settings.background.gradientId);
+    updateFolderSummary();
+  }
+
+  $: if (!loadingSettings && hasHydratedSelection) {
+    applyTheme(settings.theme);
+    applyAccent(settings.accent);
+    applyGradient(settings.background.gradientId);
+    if (needsInitialPersist || selectionNeedsPersist || hasHydratedSettings) {
+      schedulePersistPreferences();
+    }
+    hasHydratedSettings = true;
+    needsInitialPersist = false;
+    selectionNeedsPersist = false;
+  }
+
+  $: if (typeof document !== "undefined") {
+    document.body.classList.toggle("settings-open", settingsOpen);
+  }
+
+  $: if (settingsOpen) {
+    tick().then(() => {
+      settingsDrawer?.focus();
+    });
+  }
+
+  $: effectiveExpandedFolderIds = (() => {
+    const source = folderModalOpen && draftExpandedFolderIds ? draftExpandedFolderIds : expandedFolderIds;
+    const base = new Set(source ?? []);
+    if (folderSearchMatches.size) {
+      const state = getBookmarkCacheState();
+      folderSearchMatches.forEach((id) => {
+        let currentId = state.nodesById[id]?.parentId ?? null;
+        while (currentId) {
+          base.add(currentId);
+          currentId = state.nodesById[currentId]?.parentId ?? null;
+        }
+      });
+    }
+    return base;
+  })();
+
+  async function initialize() {
+    try {
+      await bootstrapBookmarkCache(chromeApi);
+      defaultFolderId = await requestFolderId();
+      await ensureDefaultSelection();
+      await ensureInitialFoldersLoaded();
+      subscribeBookmarkEvents();
+      await refreshBookmarks();
+    } catch (error) {
+      console.error("Bookmark Dial: initialization failed", error);
+      setStatus(STATUS_MESSAGES.error, "error");
+    }
   }
 
   async function requestFolderId() {
@@ -68,17 +979,42 @@
     return response.folderId;
   }
 
-  function subscribeBookmarkEvents() {
-    const debouncedRefresh = debounce(refreshBookmarks, 150);
+  async function ensureDefaultSelection() {
+    if (selectedFolderIds.size === 0 && defaultFolderId) {
+      selectedFolderIds = new Set([defaultFolderId]);
+      selectionNeedsPersist = true;
+    }
+  }
 
-    const onCreated = (_id, info) => {
-      if (info.parentId === folderId) {
+  async function ensureInitialFoldersLoaded() {
+    const ids = Array.from(selectedFolderIds);
+    if (!ids.length) {
+      return;
+    }
+    await Promise.allSettled(ids.map((id) => loadCacheSubtree(chromeApi, id)));
+    updateFolderSummary();
+  }
+
+  function subscribeBookmarkEvents() {
+    const debouncedRefresh = debounce(() => refreshBookmarks(), 150);
+
+    const onCreated = (_id, node) => {
+      applyCreatedNode(node);
+      if (!node.url && shouldAutoSelectNewFolder(node)) {
+        addFolderToSelection(node.id);
+      }
+      if (node.url) {
+        if (isFolderOrAncestorSelected(node.parentId)) {
+          debouncedRefresh();
+        }
+      } else if (selectedFolderIds.has(node.id)) {
         debouncedRefresh();
       }
     };
     chromeApi.bookmarks.onCreated.addListener(onCreated);
 
-    const onChanged = (id) => {
+    const onChanged = (id, changeInfo) => {
+      applyChangedNode(id, changeInfo);
       if (bookmarkIdSet.has(id)) {
         debouncedRefresh();
       }
@@ -86,18 +1022,23 @@
     chromeApi.bookmarks.onChanged.addListener(onChanged);
 
     const onMoved = (id, moveInfo) => {
-      if (moveInfo.parentId === folderId || bookmarkIdSet.has(id)) {
+      applyMovedNode(id, moveInfo);
+      if (
+        bookmarkIdSet.has(id) ||
+        isFolderOrAncestorSelected(moveInfo.parentId) ||
+        isFolderOrAncestorSelected(moveInfo.oldParentId)
+      ) {
         debouncedRefresh();
       }
     };
     chromeApi.bookmarks.onMoved.addListener(onMoved);
 
     const onRemoved = (id, removeInfo) => {
-      if (removeInfo.parentId === folderId || bookmarkIdSet.has(id)) {
+      applyRemovedNode(id, removeInfo);
+      handleRemovedNode(id, removeInfo);
+      if (bookmarkIdSet.has(id) || isFolderOrAncestorSelected(removeInfo.parentId)) {
         bookmarkIdSet.delete(id);
         debouncedRefresh();
-      } else if (id === folderId) {
-        handleMissingFolder();
       }
     };
     chromeApi.bookmarks.onRemoved.addListener(onRemoved);
@@ -118,40 +1059,140 @@
     });
   }
 
+  function handleRemovedNode(id, removeInfo = {}) {
+    if (!removeInfo?.node) {
+      return;
+    }
+    if (!removeInfo.node.url) {
+      const removedIds = new Set(getDescendantFolderIds(id));
+      if (removedIds.size) {
+        const nextSelection = new Set(selectedFolderIds);
+        let changed = false;
+        removedIds.forEach((removedId) => {
+          if (nextSelection.has(removedId)) {
+            nextSelection.delete(removedId);
+            changed = true;
+          }
+        });
+        if (changed) {
+          selectedFolderIds = nextSelection;
+          selectionNeedsPersist = true;
+          updateFolderSummary();
+          schedulePersistPreferences();
+          if (!selectedFolderIds.size) {
+            Promise.resolve()
+              .then(() => ensureDefaultSelection())
+              .then(() => ensureInitialFoldersLoaded())
+              .then(() => refreshBookmarks());
+          }
+        }
+      }
+      if (id === defaultFolderId) {
+        handleMissingFolder();
+      }
+    }
+  }
+
   async function handleMissingFolder() {
-    setStatus("Bookmarked Dial folder was removed. Recreating…");
+    setStatus("Default folder was removed. Recreating…");
     try {
       const response = await chromeApi.runtime.sendMessage({ type: "resetFolderCache" });
       if (response?.folderId) {
-        folderId = response.folderId;
+        defaultFolderId = response.folderId;
+        await addFolderToSelection(defaultFolderId);
         await refreshBookmarks();
-        setStatus("Bookmarked Dial folder restored.", "success");
+        setStatus("Default folder restored.", "success");
       } else {
         throw new Error(response?.error || "Unable to recreate folder");
       }
     } catch (error) {
-      console.error("Bookmarked Dial: missing folder recovery failed", error);
+      console.error("Bookmark Dial: missing folder recovery failed", error);
       setStatus(STATUS_MESSAGES.error, "error");
     }
   }
 
+  async function computeSelectionPreview(selectionSet) {
+    const working = selectionSet instanceof Set ? new Set(selectionSet) : new Set(selectionSet ?? []);
+    if (!working.size) {
+      return { items: [], counts: new Map(), total: 0 };
+    }
+    await Promise.all(Array.from(working).map((id) => loadCacheSubtree(chromeApi, id)));
+    const state = getBookmarkCacheState();
+    const seenUrls = new Map();
+    const folderUrlSets = new Map();
+    const aggregated = [];
+    working.forEach((folderId) => {
+      const bookmarkNodes = gatherBookmarksForFolder(state, folderId);
+      bookmarkNodes.forEach((node) => {
+        const normalized = normalizeUrl(node.url) || node.url;
+        const key = (normalized || node.url || node.id).toLowerCase();
+        const folderSet = folderUrlSets.get(folderId) ?? new Set();
+        folderSet.add(key);
+        folderUrlSets.set(folderId, folderSet);
+        if (seenUrls.has(key)) {
+          return;
+        }
+        seenUrls.set(key, node.id);
+        aggregated.push({
+          ...node,
+          sourceFolderId: folderId,
+          sourcePath: getFolderPath(folderId),
+        });
+      });
+    });
+    const counts = new Map(Array.from(folderUrlSets.entries()).map(([id, urlSet]) => [id, urlSet.size]));
+    return { items: aggregated, counts, total: aggregated.length };
+  }
+
   async function refreshBookmarks() {
-    if (!folderId) {
+    const nonce = ++refreshNonce;
+    if (!selectedFolderIds.size) {
+      bookmarks = [];
+      bookmarkIdSet = new Set();
+      folderBookmarkCounts = new Map();
+      combinedBookmarkCount = 0;
+      updateFolderSummary();
+      setStatus("Select folders to populate this page.", "info");
       return;
     }
     try {
-      const nodes = await chromeApi.bookmarks.getChildren(folderId);
-      const filtered = nodes.filter((node) => Boolean(node.url));
-      updateBookmarkState(filtered);
-      if (filtered.length === 0) {
+      const preview = await computeSelectionPreview(selectedFolderIds);
+      if (nonce !== refreshNonce) {
+        return;
+      }
+      folderBookmarkCounts = preview.counts;
+      combinedBookmarkCount = preview.total;
+      updateBookmarkState(preview.items);
+      updateFolderSummary();
+      if (preview.items.length === 0) {
         setStatus(STATUS_MESSAGES.empty);
       } else {
         setStatus("", "info");
       }
     } catch (error) {
-      console.error("Bookmarked Dial: failed to load bookmarks", error);
+      console.error("Bookmark Dial: failed to load bookmarks", error);
       setStatus(STATUS_MESSAGES.error, "error");
     }
+  }
+
+  function gatherBookmarksForFolder(state, folderId, bucket = []) {
+    const folder = state.nodesById[folderId];
+    if (!folder || !folder.isFolder) {
+      return bucket;
+    }
+    const children = folder.childrenIds ?? [];
+    children.forEach((childId) => {
+      const child = state.nodesById[childId];
+      if (!child) {
+        return;
+      }
+      if (child.url) {
+        bucket.push(child);
+      } else {
+        gatherBookmarksForFolder(state, childId, bucket);
+      }
+    });
+    return bucket;
   }
 
   function updateBookmarkState(list) {
@@ -163,6 +1204,389 @@
       palette: generateDialPalette(bookmark.title || bookmark.url),
       fallback: false,
     }));
+  }
+
+  function setFolderLoading(folderId, isLoading) {
+    const next = new Set(loadingFolderIds);
+    if (isLoading) {
+      next.add(folderId);
+    } else {
+      next.delete(folderId);
+    }
+    loadingFolderIds = next;
+  }
+
+  function shouldAutoSelectNewFolder(node) {
+    if (!node || node.url) {
+      return false;
+    }
+    return isFolderOrAncestorSelected(node.parentId);
+  }
+
+  function isFolderOrAncestorSelected(folderId) {
+    if (!folderId) {
+      return false;
+    }
+    const state = getBookmarkCacheState();
+    let currentId = folderId;
+    while (currentId) {
+      if (selectedFolderIds.has(currentId)) {
+        return true;
+      }
+      const current = state.nodesById[currentId];
+      currentId = current?.parentId ?? null;
+    }
+    return false;
+  }
+
+  async function addFolderToSelection(folderId) {
+    if (!folderId) {
+      return;
+    }
+    await loadCacheSubtree(chromeApi, folderId);
+    const descendants = getDescendantFolderIds(folderId);
+    const next = new Set(selectedFolderIds);
+    let changed = false;
+    descendants.forEach((id) => {
+      if (!next.has(id)) {
+        next.add(id);
+        changed = true;
+      }
+    });
+    if (changed) {
+      selectedFolderIds = next;
+      selectionNeedsPersist = true;
+      await ensureInitialFoldersLoaded();
+      await refreshBookmarks();
+      schedulePersistPreferences();
+    }
+  }
+
+  async function toggleFolderSelection(nodeId) {
+    if (!nodeId) {
+      return;
+    }
+    await loadCacheSubtree(chromeApi, nodeId);
+    const descendants = getDescendantFolderIds(nodeId);
+    if (!descendants.length) {
+      return;
+    }
+    const usingDraft = folderModalOpen;
+    const sourceSet =
+      usingDraft && draftSelectedFolderIds
+        ? draftSelectedFolderIds
+        : usingDraft
+        ? new Set(selectedFolderIds)
+        : selectedFolderIds;
+    const next = new Set(sourceSet);
+    const fullySelected = descendants.every((id) => next.has(id));
+    if (fullySelected) {
+      descendants.forEach((id) => next.delete(id));
+    } else {
+      descendants.forEach((id) => next.add(id));
+    }
+    if (usingDraft) {
+      draftSelectedFolderIds = next;
+      const nonce = ++draftPreviewNonce;
+      const preview = await computeSelectionPreview(draftSelectedFolderIds);
+      if (nonce !== draftPreviewNonce) {
+        return;
+      }
+      draftBookmarkCounts = preview.counts;
+      draftCombinedBookmarkCount = preview.total;
+      draftFolderSummary = buildFolderSummary(draftSelectedFolderIds, draftBookmarkCounts);
+    } else if (!setsEqual(selectedFolderIds, next)) {
+      selectedFolderIds = next;
+      selectionNeedsPersist = true;
+      await ensureDefaultSelection();
+      await ensureInitialFoldersLoaded();
+      await refreshBookmarks();
+      schedulePersistPreferences();
+    }
+  }
+
+  async function toggleFolderExpansion(nodeId) {
+    if (!nodeId) {
+      return;
+    }
+    const state = getBookmarkCacheState();
+    const node = state.nodesById[nodeId];
+    if (!node?.isFolder) {
+      return;
+    }
+    const usingDraft = folderModalOpen;
+    const sourceSet =
+      usingDraft && draftExpandedFolderIds
+        ? draftExpandedFolderIds
+        : usingDraft
+        ? new Set(expandedFolderIds)
+        : expandedFolderIds;
+    const next = new Set(sourceSet ?? []);
+    const original = new Set(next);
+    const commit = (set, { persist = false } = {}) => {
+      if (usingDraft) {
+        draftExpandedFolderIds = set;
+      } else {
+        expandedFolderIds = set;
+        if (persist) {
+          selectionNeedsPersist = true;
+          schedulePersistPreferences();
+        }
+      }
+    };
+    if (next.has(nodeId)) {
+      next.delete(nodeId);
+      const changed = !setsEqual(original, next);
+      commit(next, { persist: changed });
+      return;
+    }
+
+    next.add(nodeId);
+    commit(next);
+    if (!node.childrenLoaded) {
+      setFolderLoading(nodeId, true);
+      try {
+        await ensureCacheChildrenLoaded(chromeApi, nodeId);
+      } catch (error) {
+        console.warn("Bookmark Dial: failed to load child folders", error);
+      } finally {
+        setFolderLoading(nodeId, false);
+      }
+    }
+    const latestState = getBookmarkCacheState();
+    const refreshedNode = latestState.nodesById[nodeId];
+    const hasFolderChildren = refreshedNode?.childrenIds?.some((childId) => {
+      const childNode = latestState.nodesById[childId];
+      return childNode?.isFolder;
+    });
+    if (!hasFolderChildren) {
+      next.delete(nodeId);
+    }
+    const changed = !setsEqual(original, next);
+    commit(next, { persist: changed });
+  }
+
+  async function clearFolderSelection() {
+    if (folderModalOpen) {
+      draftSelectedFolderIds = new Set();
+      draftPreviewNonce++;
+      draftBookmarkCounts = new Map();
+      draftCombinedBookmarkCount = 0;
+      draftFolderSummary = [];
+      return;
+    }
+    selectedFolderIds = new Set();
+    selectionNeedsPersist = true;
+    await ensureDefaultSelection();
+    await ensureInitialFoldersLoaded();
+    await refreshBookmarks();
+    schedulePersistPreferences();
+  }
+
+  async function confirmFolderSelection() {
+    if (!folderModalOpen) {
+      return;
+    }
+    const nextSelected = new Set(draftSelectedFolderIds ?? []);
+    const nextExpanded = new Set(draftExpandedFolderIds ?? []);
+    const selectionChanged = !setsEqual(selectedFolderIds, nextSelected);
+    const expansionChanged = !setsEqual(expandedFolderIds, nextExpanded);
+    folderModalOpen = false;
+    resetDraftState();
+    if (selectionChanged) {
+      selectedFolderIds = nextSelected;
+      selectionNeedsPersist = true;
+      await ensureDefaultSelection();
+      await ensureInitialFoldersLoaded();
+      await refreshBookmarks();
+    }
+    if (expansionChanged) {
+      expandedFolderIds = nextExpanded;
+      selectionNeedsPersist = true;
+    }
+    if (selectionChanged || expansionChanged) {
+      schedulePersistPreferences();
+    } else {
+      updateFolderSummary();
+    }
+  }
+
+  function openFolderModal() {
+    draftSelectedFolderIds = new Set(selectedFolderIds);
+    draftExpandedFolderIds = new Set(expandedFolderIds);
+    draftBookmarkCounts = new Map(folderBookmarkCounts);
+    draftCombinedBookmarkCount = combinedBookmarkCount;
+    draftFolderSummary = buildFolderSummary(draftSelectedFolderIds, draftBookmarkCounts);
+    draftPreviewNonce = 0;
+    folderSearchQuery = "";
+    folderSearchMatches = new Set();
+    visibleFolderIds = null;
+    folderModalOpen = true;
+  }
+
+  function resetDraftState() {
+    draftSelectedFolderIds = null;
+    draftExpandedFolderIds = null;
+    draftFolderSummary = [];
+    draftBookmarkCounts = new Map();
+    draftCombinedBookmarkCount = 0;
+    draftPreviewNonce = 0;
+    folderSearchQuery = "";
+    folderSearchMatches = new Set();
+    visibleFolderIds = null;
+  }
+
+  function closeFolderModal() {
+    folderModalOpen = false;
+    resetDraftState();
+  }
+
+  function buildFolderSummary(selectionSet, countsMap) {
+    const state = getBookmarkCacheState();
+    const summaryItems = Array.from(selectionSet ?? []).map((id) => {
+      const path = getFolderPath(id);
+      const label = path[path.length - 1] || "Untitled folder";
+      return {
+        id,
+        path,
+        label,
+        fullPath: path.join(" › "),
+        count: countsMap?.get(id) ?? 0,
+      };
+    });
+    summaryItems.sort((a, b) => a.fullPath.localeCompare(b.fullPath));
+    return summaryItems;
+  }
+
+  function updateFolderSummary() {
+    folderSummary = buildFolderSummary(selectedFolderIds, folderBookmarkCounts);
+  }
+
+  function getFolderCheckboxState(nodeId) {
+    const state = getBookmarkCacheState();
+    const node = state.nodesById[nodeId];
+    const selectionSet =
+      folderModalOpen && draftSelectedFolderIds ? draftSelectedFolderIds : selectedFolderIds;
+    if (!node?.isFolder) {
+      return selectionSet.has(nodeId) ? "selected" : "none";
+    }
+    const descendantIds = getDescendantFolderIds(nodeId);
+    if (!descendantIds.length) {
+      return selectionSet.has(nodeId) ? "selected" : "none";
+    }
+    const selectedCount = descendantIds.filter((id) => selectionSet.has(id)).length;
+    if (selectedCount === 0) {
+      return "none";
+    }
+    if (selectedCount === descendantIds.length) {
+      return "selected";
+    }
+    return "partial";
+  }
+
+  async function handleFolderSearch(query) {
+    folderSearchQuery = query;
+    const trimmed = query.trim();
+    if (!trimmed) {
+      folderSearchMatches = new Set();
+      visibleFolderIds = null;
+      return;
+    }
+    if (chromeApi?.bookmarks?.search) {
+      try {
+        const results = await chromeApi.bookmarks.search({ query: trimmed });
+        const folders = results.filter((node) => !node.url);
+        for (const folder of folders) {
+          await loadCacheSubtree(chromeApi, folder.id);
+          let parentId = folder.parentId;
+          while (parentId) {
+            await loadCacheSubtree(chromeApi, parentId);
+            const parentNode = getBookmarkCacheState().nodesById[parentId];
+            parentId = parentNode?.parentId ?? null;
+          }
+        }
+      } catch (error) {
+        console.warn("Bookmark Dial: folder search failed", error);
+      }
+    }
+
+    const index = buildSearchIndex();
+    const lowered = trimmed.toLowerCase();
+    const matches = index.filter((item) => {
+      const titleMatch = item.title.toLowerCase().includes(lowered);
+      const pathMatch = item.path.join(" ").toLowerCase().includes(lowered);
+      return titleMatch || pathMatch;
+    });
+    const matchIds = matches.map((item) => item.id);
+    folderSearchMatches = new Set(matchIds);
+    const visible = new Set();
+    const state = getBookmarkCacheState();
+    matchIds.forEach((id) => {
+      let current = state.nodesById[id];
+      while (current) {
+        visible.add(current.id);
+        if (!current.parentId) {
+          break;
+        }
+        current = state.nodesById[current.parentId];
+      }
+      const node = state.nodesById[id];
+      node?.childrenIds?.forEach((childId) => {
+        const childNode = state.nodesById[childId];
+        if (childNode?.isFolder) {
+          visible.add(childId);
+        }
+      });
+    });
+    visibleFolderIds = visible;
+  }
+
+  function handleExternalPreferences(preferences) {
+    const merged = mergeStoredPreferences(preferences);
+    const nextSettings = merged.settings;
+    const settingsChanged =
+      nextSettings.theme !== settings.theme ||
+      nextSettings.accent !== settings.accent ||
+      nextSettings.background.mode !== settings.background.mode ||
+      nextSettings.background.gradientId !== settings.background.gradientId;
+    if (settingsChanged) {
+      settings = {
+        ...settings,
+        ...nextSettings,
+        background: { ...nextSettings.background },
+      };
+    }
+
+    const nextSelected = new Set(merged.folderSelection.selectedIds);
+    const nextExpanded = new Set(merged.folderSelection.expandedIds);
+    const selectionChanged = !setsEqual(nextSelected, selectedFolderIds);
+    const expansionChanged = !setsEqual(nextExpanded, expandedFolderIds);
+
+    if (selectionChanged) {
+      selectedFolderIds = nextSelected;
+      updateFolderSummary();
+      refreshBookmarks();
+    }
+
+    if (expansionChanged) {
+      expandedFolderIds = nextExpanded;
+    }
+
+    if (selectionChanged || expansionChanged) {
+      selectionNeedsPersist = false;
+    }
+  }
+
+  function getFaviconUrl(url) {
+    if (realChrome?.runtime?.sendMessage) {
+      return `chrome://favicon/size/${FAVICON_SIZE}@2x/${encodeURIComponent(url)}`;
+    }
+    try {
+      const urlObj = new URL(url);
+      return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=${FAVICON_SIZE * 2}`;
+    } catch {
+      return '';
+    }
   }
 
   function showFallback(bookmarkId) {
@@ -200,7 +1624,7 @@
         url: normalizedUrl,
       });
     } catch (error) {
-      console.error("Bookmarked Dial: failed to create bookmark", error);
+      console.error("Bookmark Dial: failed to create bookmark", error);
       alert("Unable to add shortcut. Please try again.");
     }
   }
@@ -212,7 +1636,7 @@
     try {
       await chromeApi.bookmarks.remove(id);
     } catch (error) {
-      console.error("Bookmarked Dial: failed to remove bookmark", error);
+      console.error("Bookmark Dial: failed to remove bookmark", error);
       alert("Unable to remove shortcut.");
     }
   }
@@ -257,7 +1681,7 @@
 
     const dropIndex = computeDropIndex(event.currentTarget, event, targetIndex, draggedIndex);
     moveBookmark(draggedId, dropIndex).catch((error) => {
-      console.error("Bookmarked Dial: failed to reorder bookmark", error);
+      console.error("Bookmark Dial: failed to reorder bookmark", error);
       setStatus("Reorder failed. Try again.", "error");
       refreshBookmarks();
     });
@@ -283,7 +1707,7 @@
       return;
     }
     moveBookmark(draggedId, bookmarks.length).catch((error) => {
-      console.error("Bookmarked Dial: failed to move bookmark to end", error);
+      console.error("Bookmark Dial: failed to move bookmark to end", error);
       setStatus("Reorder failed. Try again.", "error");
       refreshBookmarks();
     });
@@ -345,18 +1769,40 @@
     }
     try {
       const dataUrl = await fileToDataUrl(file, MAX_BACKGROUND_BYTES);
-      await chromeApi.storage.local.set({ [BACKGROUND_KEY]: dataUrl });
-      applyBackground(dataUrl);
+      if (shouldPersistPreferences) {
+        await chromeApi.storage.local.set({ [BACKGROUND_KEY]: dataUrl });
+      }
+      applyBackgroundImage(dataUrl);
+      settings = {
+        ...settings,
+        background: {
+          ...settings.background,
+          mode: "custom",
+        },
+      };
       backgroundDialog?.close();
     } catch (error) {
-      console.error("Bookmarked Dial: failed to save background", error);
+      console.error("Bookmark Dial: failed to save background", error);
       alert("Unable to store the background image. Try a smaller file.");
     }
   }
 
   async function clearBackground() {
-    await chromeApi.storage.local.remove(BACKGROUND_KEY);
-    applyBackground(null);
+    try {
+      if (shouldPersistPreferences) {
+        await chromeApi.storage.local.remove(BACKGROUND_KEY);
+      }
+    } catch (error) {
+      console.error("Bookmark Dial: failed to clear background", error);
+    }
+    applyBackgroundImage(null);
+    settings = {
+      ...settings,
+      background: {
+        ...settings.background,
+        mode: "gradient",
+      },
+    };
     backgroundDialog?.close();
   }
 
@@ -365,15 +1811,39 @@
   }
 
   async function loadBackground() {
+    if (!shouldPersistPreferences) {
+      applyBackgroundImage(null);
+      if (settings.background.mode === "custom") {
+        settings = {
+          ...settings,
+          background: {
+            ...settings.background,
+            mode: "gradient",
+          },
+        };
+      }
+      return;
+    }
     try {
       const stored = await chromeApi.storage.local.get(BACKGROUND_KEY);
-      applyBackground(stored[BACKGROUND_KEY]);
+      const dataUrl = stored?.[BACKGROUND_KEY] || "";
+      applyBackgroundImage(dataUrl);
+      if (!dataUrl && settings.background.mode === "custom") {
+        settings = {
+          ...settings,
+          background: {
+            ...settings.background,
+            mode: "gradient",
+          },
+        };
+        needsInitialPersist = true;
+      }
     } catch (error) {
-      console.error("Bookmarked Dial: failed to load background", error);
+      console.error("Bookmark Dial: failed to load background", error);
     }
   }
 
-  function applyBackground(dataUrl) {
+  function applyBackgroundImage(dataUrl) {
     backgroundUrl = dataUrl || "";
   }
 
@@ -482,281 +1952,579 @@
     });
   }
 
-  function createMockChrome() {
-    console.info("Bookmarked Dial: using mock Chrome APIs for development");
-    let mockFolderId = "mock-folder";
-    let counter = 0;
-    const listeners = {
-      onCreated: new Set(),
-      onChanged: new Set(),
-      onMoved: new Set(),
-      onRemoved: new Set(),
-      onImportBegan: new Set(),
-      onImportEnded: new Set(),
-    };
 
-    const mockStorageLocal = new Map();
-    const mockStorageSync = new Map([["speedDialFolderId", mockFolderId]]);
+function createMockChrome() {
+  console.info("Bookmark Dial: using mock Chrome APIs for development");
+  let mockFolderId = "mock-folder";
+  let counter = 1;
 
-    const mockBookmarks = [
-      {
-        id: "mock-1",
-        parentId: mockFolderId,
-        title: "Svelte",
-        url: "https://svelte.dev",
-        index: 0,
-      },
-      {
-        id: "mock-2",
-        parentId: mockFolderId,
-        title: "MDN Web Docs",
-        url: "https://developer.mozilla.org",
-        index: 1,
-      },
-      {
-        id: "mock-3",
-        parentId: mockFolderId,
-        title: "GitHub",
-        url: "https://github.com",
-        index: 2,
-      },
-      {
-        id: "mock-4",
-        parentId: mockFolderId,
-        title: "Stack Overflow",
-        url: "https://stackoverflow.com",
-        index: 3,
-      },
-      {
-        id: "mock-5",
-        parentId: mockFolderId,
-        title: "Visual Studio Code",
-        url: "https://code.visualstudio.com",
-        index: 4,
-      },
-      {
-        id: "mock-6",
-        parentId: mockFolderId,
-        title: "Node.js",
-        url: "https://nodejs.org",
-        index: 5,
-      },
-      {
-        id: "mock-7",
-        parentId: mockFolderId,
-        title: "npm",
-        url: "https://npmjs.com",
-        index: 6,
-      },
-      {
-        id: "mock-8",
-        parentId: mockFolderId,
-        title: "CSS-Tricks",
-        url: "https://css-tricks.com",
-        index: 7,
-      },
-      {
-        id: "mock-9",
-        parentId: mockFolderId,
-        title: "Can I Use",
-        url: "https://caniuse.com",
-        index: 8,
-      },
-      {
-        id: "mock-10",
-        parentId: mockFolderId,
-        title: "Vite",
-        url: "https://vitejs.dev",
-        index: 9,
-      },
-      {
-        id: "mock-11",
-        parentId: mockFolderId,
-        title: "TypeScript",
-        url: "https://typescriptlang.org",
-        index: 10,
-      },
-      {
-        id: "mock-12",
-        parentId: mockFolderId,
-        title: "Tailwind CSS",
-        url: "https://tailwindcss.com",
-        index: 11,
-      },
-    ];
+  const listeners = {
+    onCreated: new Set(),
+    onChanged: new Set(),
+    onMoved: new Set(),
+    onRemoved: new Set(),
+    onImportBegan: new Set(),
+    onImportEnded: new Set(),
+  };
 
-    function emit(event, ...args) {
-      listeners[event].forEach((handler) => {
-        try {
-          handler(...args);
-        } catch (error) {
-          console.error(`Mock chrome ${event} handler failed`, error);
+  const storageListeners = new Set();
+  const mockStorageLocal = new Map();
+  const mockStorageSync = new Map([
+    ["speedDialFolderId", mockFolderId],
+    [
+      SYNC_SETTINGS_KEY,
+      {
+        version: STORAGE_VERSION,
+        theme: DEFAULT_SETTINGS.theme,
+        accent: DEFAULT_SETTINGS.accent,
+        background: { ...DEFAULT_SETTINGS.background },
+        folderSelection: { selectedIds: [mockFolderId], expandedIds: [] },
+      },
+    ],
+  ]);
+
+  const nodesById = new Map();
+
+  function emit(event, ...args) {
+    const set = listeners[event];
+    if (!set) {
+      return;
+    }
+    set.forEach((handler) => {
+      try {
+        handler(...args);
+      } catch (error) {
+        console.error(`Mock chrome ${event} handler failed`, error);
+      }
+    });
+  }
+
+  function emitStorageChange(area, changes) {
+    if (!changes || Object.keys(changes).length === 0) {
+      return;
+    }
+    storageListeners.forEach((handler) => {
+      try {
+        handler(changes, area);
+      } catch (error) {
+        console.error("Mock chrome storage listener failed", error);
+      }
+    });
+  }
+
+  function cloneSerializable(value) {
+    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  }
+
+  function storageGet(store, key) {
+    if (Array.isArray(key)) {
+      const result = {};
+      key.forEach((k) => (result[k] = store.get(k)));
+      return result;
+    }
+    if (typeof key === "object" && key !== null) {
+      const result = { ...key };
+      for (const k of Object.keys(key)) {
+        if (store.has(k)) {
+          result[k] = store.get(k);
         }
-      });
+      }
+      return result;
     }
+    return { [key]: store.get(key) };
+  }
 
-    const onProxy = {
-      addListener(fn) {
-        this._listeners.add(fn);
-      },
-      removeListener(fn) {
-        this._listeners.delete(fn);
-      },
-    };
-
-    function makeEvent(name) {
-      const set = listeners[name];
-      return {
-        addListener: (fn) => set.add(fn),
-        removeListener: (fn) => set.delete(fn),
+  function storageSet(store, area, items) {
+    const changes = {};
+    Object.entries(items || {}).forEach(([key, value]) => {
+      const oldValue = store.get(key);
+      store.set(key, value);
+      changes[key] = {
+        oldValue: cloneSerializable(oldValue),
+        newValue: cloneSerializable(value),
       };
-    }
+    });
+    emitStorageChange(area, changes);
+  }
 
-    function getFolderId() {
-      return mockFolderId;
-    }
+  function storageRemove(store, area, key) {
+    const keys = Array.isArray(key) ? key : [key];
+    const changes = {};
+    keys.forEach((entry) => {
+      if (!store.has(entry)) {
+        return;
+      }
+      const oldValue = store.get(entry);
+      store.delete(entry);
+      changes[entry] = {
+        oldValue: cloneSerializable(oldValue),
+        newValue: undefined,
+      };
+    });
+    emitStorageChange(area, changes);
+  }
 
+  function reindexChildren(parent) {
+    if (!parent?.children) {
+      return;
+    }
+    parent.children.forEach((child, index) => {
+      child.index = index;
+    });
+    parent.hasChildren = parent.children.some((child) => !child.url);
+  }
+
+  function attachChild(parentId, node, index) {
+    const parent = nodesById.get(parentId);
+    if (!parent) {
+      throw new Error(`Parent ${parentId} not found`);
+    }
+    if (!Array.isArray(parent.children)) {
+      parent.children = [];
+    }
+    const insertIndex = typeof index === "number" ? Math.max(0, Math.min(index, parent.children.length)) : parent.children.length;
+    parent.children.splice(insertIndex, 0, node);
+    node.parentId = parentId;
+    reindexChildren(parent);
+  }
+
+  function detachChild(parentId, nodeId) {
+    const parent = nodesById.get(parentId);
+    if (!parent?.children) {
+      return;
+    }
+    const idx = parent.children.findIndex((child) => child.id === nodeId);
+    if (idx !== -1) {
+      parent.children.splice(idx, 1);
+      reindexChildren(parent);
+    }
+  }
+
+  function createFolderNode({ id, parentId = null, title = "Untitled folder", index }) {
+    const nodeId = id ?? `mock-folder-${counter++}`;
+    const node = {
+      id: nodeId,
+      parentId,
+      title,
+      index: typeof index === "number" ? index : 0,
+      children: [],
+    };
+    nodesById.set(nodeId, node);
+    if (parentId) {
+      attachChild(parentId, node, index);
+    }
+    return node;
+  }
+
+  function createBookmarkNode({ id, parentId, title, url, index }) {
+    if (!parentId) {
+      throw new Error("Bookmarks require a parent folder");
+    }
+    const nodeId = id ?? `mock-bookmark-${counter++}`;
+    const node = {
+      id: nodeId,
+      parentId,
+      title: title ?? url ?? "Untitled",
+      url,
+      index: typeof index === "number" ? index : 0,
+    };
+    nodesById.set(nodeId, node);
+    attachChild(parentId, node, index);
+    return node;
+  }
+
+  function cloneNode(node, includeChildren = false) {
+    if (!node) {
+      return null;
+    }
+    const base = {
+      id: node.id,
+      parentId: node.parentId ?? undefined,
+      title: node.title,
+      index: node.index,
+    };
+    if (node.url) {
+      base.url = node.url;
+    }
+    if (includeChildren && Array.isArray(node.children)) {
+      base.children = node.children.map((child) => cloneNode(child, true));
+    }
+    return base;
+  }
+
+  function deleteBranch(node) {
+    if (!node) {
+      return;
+    }
+    if (Array.isArray(node.children)) {
+      [...node.children].forEach((child) => deleteBranch(child));
+    }
+    nodesById.delete(node.id);
+  }
+
+  const root = createFolderNode({ id: "0", parentId: null, title: "" });
+  const bookmarksBar = createFolderNode({ id: "1", parentId: root.id, title: "Bookmarks Bar" });
+  createFolderNode({ id: "2", parentId: root.id, title: "Other Bookmarks" });
+  createFolderNode({ id: "3", parentId: root.id, title: "Mobile Bookmarks" });
+  createFolderNode({ id: "1-reading", parentId: "1", title: "Reading List" });
+  const inspirationFolder = createFolderNode({ id: "2-inspiration", parentId: "2", title: "Inspiration" });
+
+  function populateDialFolder(folderId) {
+    const baseBookmarks = [
+      { title: "Svelte", url: "https://svelte.dev" },
+      { title: "MDN Web Docs", url: "https://developer.mozilla.org" },
+      { title: "GitHub", url: "https://github.com" },
+      { title: "Stack Overflow", url: "https://stackoverflow.com" },
+      { title: "Vite", url: "https://vitejs.dev" },
+    ];
+    baseBookmarks.forEach((item, index) => {
+      createBookmarkNode({ parentId: folderId, title: item.title, url: item.url, index });
+    });
+
+    const frameworksFolder = createFolderNode({ id: `${folderId}-frameworks`, parentId: folderId, title: "Frameworks" });
+    [
+      { title: "React", url: "https://react.dev" },
+      { title: "Vue.js", url: "https://vuejs.org" },
+      { title: "Angular", url: "https://angular.io" },
+    ].forEach((item, index) => {
+      createBookmarkNode({ parentId: frameworksFolder.id, title: item.title, url: item.url, index });
+    });
+
+    const toolingFolder = createFolderNode({ id: `${folderId}-tooling`, parentId: folderId, title: "Developer Tools" });
+    [
+      { title: "ESLint", url: "https://eslint.org" },
+      { title: "Prettier", url: "https://prettier.io" },
+      { title: "Parcel", url: "https://parceljs.org" },
+    ].forEach((item, index) => {
+      createBookmarkNode({ parentId: toolingFolder.id, title: item.title, url: item.url, index });
+    });
+  }
+
+  createFolderNode({ id: mockFolderId, parentId: bookmarksBar.id, title: "Bookmark Dial" });
+  populateDialFolder(mockFolderId);
+
+  [
+    { title: "Muz.li", url: "https://muz.li" },
+    { title: "Awwwards", url: "https://www.awwwards.com" },
+    { title: "Dribbble", url: "https://dribbble.com" },
+  ].forEach((item, index) => {
+    createBookmarkNode({ parentId: inspirationFolder.id, title: item.title, url: item.url, index });
+  });
+
+  function makeEvent(name) {
+    const set = listeners[name];
     return {
-      runtime: {
-        sendMessage: async (message) => {
-          if (message?.type === "getFolderId") {
-            return { folderId: getFolderId() };
-          }
-          if (message?.type === "resetFolderCache") {
-            mockFolderId = "mock-folder";
-            mockStorageSync.set("speedDialFolderId", mockFolderId);
-            return { folderId: mockFolderId };
-          }
-          return {};
-        },
-      },
-      bookmarks: {
-        onCreated: makeEvent("onCreated"),
-        onChanged: makeEvent("onChanged"),
-        onMoved: makeEvent("onMoved"),
-        onRemoved: makeEvent("onRemoved"),
-        onImportBegan: makeEvent("onImportBegan"),
-        onImportEnded: makeEvent("onImportEnded"),
-        async getChildren(id) {
-          return mockBookmarks.filter((bookmark) => bookmark.parentId === id).sort((a, b) => a.index - b.index);
-        },
-        async create({ parentId, title, url }) {
-          const id = `mock-${Date.now()}-${counter++}`;
-          const bookmark = {
-            id,
-            parentId,
-            title,
-            url,
-            index: mockBookmarks.filter((item) => item.parentId === parentId).length,
-          };
-          mockBookmarks.push(bookmark);
-          emit("onCreated", id, bookmark);
-          return bookmark;
-        },
-        async remove(id) {
-          const index = mockBookmarks.findIndex((bookmark) => bookmark.id === id);
-          if (index === -1) {
-            throw new Error("Bookmark not found");
-          }
-          const [removed] = mockBookmarks.splice(index, 1);
-          emit("onRemoved", id, { parentId: removed.parentId, node: removed });
-        },
-        async move(id, { parentId, index }) {
-          const currentIndex = mockBookmarks.findIndex((bookmark) => bookmark.id === id);
-          if (currentIndex === -1) {
-            throw new Error("Bookmark not found");
-          }
-          const [bookmark] = mockBookmarks.splice(currentIndex, 1);
-          bookmark.parentId = parentId;
-          const siblings = mockBookmarks.filter((item) => item.parentId === parentId);
-          siblings.splice(index, 0, bookmark);
-          siblings.forEach((item, idx) => {
-            item.index = idx;
-          });
-          emit("onMoved", id, { parentId });
-          return bookmark;
-        },
-      },
-      storage: {
-        local: {
-          async get(key) {
-            if (Array.isArray(key)) {
-              const result = {};
-              key.forEach((k) => (result[k] = mockStorageLocal.get(k)));
-              return result;
-            }
-            if (typeof key === "object") {
-              const result = { ...key };
-              for (const k of Object.keys(key)) {
-                if (mockStorageLocal.has(k)) {
-                  result[k] = mockStorageLocal.get(k);
-                }
-              }
-              return result;
-            }
-            return { [key]: mockStorageLocal.get(key) };
-          },
-          async set(items) {
-            Object.entries(items).forEach(([k, v]) => mockStorageLocal.set(k, v));
-          },
-          async remove(key) {
-            if (Array.isArray(key)) {
-              key.forEach((k) => mockStorageLocal.delete(k));
-            } else {
-              mockStorageLocal.delete(key);
-            }
-          },
-        },
-        sync: {
-          async get(key) {
-            if (Array.isArray(key)) {
-              const result = {};
-              key.forEach((k) => (result[k] = mockStorageSync.get(k)));
-              return result;
-            }
-            if (typeof key === "object") {
-              const result = { ...key };
-              for (const k of Object.keys(key)) {
-                if (mockStorageSync.has(k)) {
-                  result[k] = mockStorageSync.get(k);
-                }
-              }
-              return result;
-            }
-            return { [key]: mockStorageSync.get(key) };
-          },
-          async set(items) {
-            Object.entries(items).forEach(([k, v]) => mockStorageSync.set(k, v));
-          },
-          async remove(key) {
-            if (Array.isArray(key)) {
-              key.forEach((k) => mockStorageSync.delete(k));
-            } else {
-              mockStorageSync.delete(key);
-            }
-          },
-        },
-      },
+      addListener: (fn) => set.add(fn),
+      removeListener: (fn) => set.delete(fn),
     };
   }
+
+  return {
+    runtime: {
+      sendMessage: async (message) => {
+        if (message?.type === "getFolderId") {
+          return { folderId: mockFolderId };
+        }
+        if (message?.type === "resetFolderCache") {
+          const newFolderId = `mock-folder-${Date.now().toString(36)}`;
+          const existing = nodesById.get(mockFolderId);
+          if (existing) {
+            const parentId = existing.parentId;
+            if (parentId) {
+              detachChild(parentId, existing.id);
+            }
+            deleteBranch(existing);
+          }
+          mockFolderId = newFolderId;
+          const recreated = createFolderNode({ id: mockFolderId, parentId: "1", title: "Bookmark Dial" });
+          populateDialFolder(recreated.id);
+          storageSet(mockStorageSync, "sync", {
+            speedDialFolderId: mockFolderId,
+            [SYNC_SETTINGS_KEY]: {
+              version: STORAGE_VERSION,
+              theme: DEFAULT_SETTINGS.theme,
+              accent: DEFAULT_SETTINGS.accent,
+              background: { ...DEFAULT_SETTINGS.background },
+              folderSelection: { selectedIds: [mockFolderId], expandedIds: [] },
+            },
+          });
+          return { folderId: mockFolderId };
+        }
+        return {};
+      },
+    },
+    bookmarks: {
+      onCreated: makeEvent("onCreated"),
+      onChanged: makeEvent("onChanged"),
+      onMoved: makeEvent("onMoved"),
+      onRemoved: makeEvent("onRemoved"),
+      onImportBegan: makeEvent("onImportBegan"),
+      onImportEnded: makeEvent("onImportEnded"),
+      async getTree() {
+        return [cloneNode(nodesById.get("0"), true)];
+      },
+      async getChildren(id) {
+        const parent = nodesById.get(id);
+        if (!parent?.children) {
+          return [];
+        }
+        return parent.children.map((child) => cloneNode(child, false));
+      },
+      async getSubTree(id) {
+        const node = nodesById.get(id);
+        return node ? [cloneNode(node, true)] : [];
+      },
+      async search(info) {
+        const query = String(info?.query ?? "").trim().toLowerCase();
+        if (!query) {
+          return [];
+        }
+        return Array.from(nodesById.values())
+          .filter((node) => !node.url && (node.title || "").toLowerCase().includes(query))
+          .map((node) => cloneNode(node, false));
+      },
+      async create({ parentId, title, url }) {
+        const node = url
+          ? createBookmarkNode({ parentId, title, url })
+          : createFolderNode({ parentId, title });
+        emit("onCreated", node.id, cloneNode(node, true));
+        return cloneNode(node, true);
+      },
+      async remove(id) {
+        const node = nodesById.get(id);
+        if (!node) {
+          throw new Error("Bookmark not found");
+        }
+        const snapshot = cloneNode(node, true);
+        if (node.parentId) {
+          detachChild(node.parentId, id);
+        }
+        deleteBranch(node);
+        emit("onRemoved", id, { parentId: snapshot.parentId ?? null, node: snapshot });
+      },
+      async move(id, { parentId, index }) {
+        const node = nodesById.get(id);
+        if (!node) {
+          throw new Error("Bookmark not found");
+        }
+        const oldParentId = node.parentId ?? null;
+        if (oldParentId) {
+          detachChild(oldParentId, id);
+        }
+        attachChild(parentId, node, index);
+        emit("onMoved", id, { parentId, oldParentId, index });
+        return cloneNode(node, false);
+      },
+    },
+    storage: {
+      local: {
+        async get(key) {
+          return storageGet(mockStorageLocal, key);
+        },
+        async set(items) {
+          storageSet(mockStorageLocal, "local", items);
+        },
+        async remove(key) {
+          storageRemove(mockStorageLocal, "local", key);
+        },
+      },
+      sync: {
+        async get(key) {
+          return storageGet(mockStorageSync, key);
+        },
+        async set(items) {
+          storageSet(mockStorageSync, "sync", items);
+        },
+        async remove(key) {
+          storageRemove(mockStorageSync, "sync", key);
+        },
+      },
+      onChanged: {
+        addListener(fn) {
+          storageListeners.add(fn);
+        },
+        removeListener(fn) {
+          storageListeners.delete(fn);
+        },
+      },
+    },
+  };
+}
+
 </script>
 
 <div
   id="background-layer"
-  class:visible={Boolean(backgroundUrl)}
-  style:background-image={backgroundUrl ? `url(${backgroundUrl})` : null}
+  class:visible={settings.background.mode === "custom" && Boolean(backgroundUrl)}
+  style:background-image={settings.background.mode === "custom" && backgroundUrl ? `url(${backgroundUrl})` : null}
 ></div>
 
 <div class="page">
   <button
     class="icon-button"
     type="button"
-    title="Change background"
-    aria-label="Change background"
-    on:click={openBackgroundDialog}
+    title="Settings"
+    aria-label="Open settings"
+    aria-expanded={settingsOpen}
+    aria-controls="settings-drawer"
+    on:click={toggleSettings}
+    bind:this={settingsButton}
   >
-    <img src="/icons/pencil.svg" alt="" />
+    <svg
+      class="icon-button__glyph"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      focusable="false"
+      role="img"
+    >
+      <path
+        d="M12 8.75a3.25 3.25 0 1 1 0 6.5 3.25 3.25 0 0 1 0-6.5Z"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.6"
+      />
+      <path
+        d="M21 12l-2.938 3.5-1.562 4.294L12 19l-4.5.794L5.938 15.5 3 12l2.938-3.5L7.5 4.206 12 5l4.5-.794L18.062 8.5 21 12Z"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.6"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
   </button>
+
+  <aside
+    id="settings-drawer"
+    class="settings-drawer"
+    data-open={settingsOpen}
+    aria-hidden={!settingsOpen}
+    tabindex="-1"
+    bind:this={settingsDrawer}
+    on:click|stopPropagation
+  >
+    <header class="settings-drawer__header">
+      <h2>Settings</h2>
+      <button
+        type="button"
+        class="settings-drawer__close"
+        aria-label="Close settings"
+        on:click={closeSettings}
+      >
+        &times;
+      </button>
+    </header>
+
+    <section class="settings-group">
+      <h3>Theme</h3>
+      <div class="choice-row">
+        {#each THEME_OPTIONS as option}
+          <button
+            type="button"
+            class="choice-button"
+            data-active={settings.theme === option.id}
+            on:click={() => setThemeChoice(option.id)}
+          >
+            {option.label}
+          </button>
+        {/each}
+      </div>
+    </section>
+
+    <section class="settings-group">
+      <h3>Accent color</h3>
+      <div class="accent-grid">
+        {#each visibleAccentOptions as option}
+          <button
+            type="button"
+            class="accent-swatch"
+            style={`--swatch-color: ${option.colors.base};`}
+            data-active={settings.accent === option.id}
+            aria-label={option.label}
+            title={option.label}
+            on:click={() => setAccentChoice(option.id)}
+          ></button>
+        {/each}
+      </div>
+      {#if ACCENT_OPTIONS.length > ACCENT_PREVIEW_COUNT}
+        <div class="swatch-toggle-row">
+          <button
+            type="button"
+            class="swatch-toggle-button"
+            aria-expanded={showAllAccents}
+            on:click={toggleAccentOptions}
+          >
+            {showAllAccents ? "Show fewer accent colors" : "More accent colors"}
+          </button>
+        </div>
+      {/if}
+    </section>
+
+    <section class="settings-group">
+      <h3>Gradient background</h3>
+      <div class="gradient-grid">
+        {#each visibleGradientOptions as option}
+          <button
+            type="button"
+            class="gradient-option"
+            style={`--gradient-sample-light: ${option.gradients.light}; --gradient-sample-dark: ${option.gradients.dark};`}
+            data-active={settings.background.mode === "gradient" && settings.background.gradientId === option.id}
+            on:click={() => selectGradient(option.id)}
+          >
+            <span>{option.label}</span>
+          </button>
+        {/each}
+      </div>
+      {#if GRADIENT_OPTIONS.length > GRADIENT_PREVIEW_COUNT}
+        <div class="swatch-toggle-row">
+          <button
+            type="button"
+            class="swatch-toggle-button"
+            aria-expanded={showAllGradients}
+            on:click={toggleGradientOptions}
+          >
+            {showAllGradients ? "Show fewer gradients" : "More gradients"}
+          </button>
+        </div>
+      {/if}
+    </section>
+
+    <section class="settings-group">
+      <button type="button" class="custom-background-button" on:click={showCustomBackgroundPicker}>
+        Custom background…
+      </button>
+    </section>
+
+    <section class="settings-group settings-group--folders">
+      <h3>Folders</h3>
+      <div class="folder-bar">
+        <div class="folder-bar__summary">
+          {#if folderSummary.length === 0}
+            <span class="folder-chip folder-chip--empty" title="Default Bookmark Dial folder">
+              Default folder
+            </span>
+          {:else}
+            {#each folderSummary as item (item.id)}
+              <span class="folder-chip" title={item.fullPath}>
+                <span class="folder-chip__label">{item.label}</span>
+                <span class="folder-chip__count">{item.count}</span>
+              </span>
+            {/each}
+          {/if}
+        </div>
+        <button type="button" class="ghost-button folder-bar__action" on:click={openFolderModal}>
+          Manage folders
+        </button>
+      </div>
+    </section>
+  </aside>
+
+  <div
+    class="settings-overlay"
+    class:visible={settingsOpen}
+    aria-hidden={!settingsOpen}
+    on:pointerdown={closeSettings}
+  ></div>
 
   <main>
     <section id="status" role="status" aria-live="polite" data-tone={statusMessage ? statusTone : null}>
@@ -766,7 +2534,7 @@
     <section
       id="dial-grid"
       class="grid"
-      aria-label="Bookmarked Dial links"
+      aria-label="Bookmark Dial links"
       on:dragover={handleGridDragOver}
       on:drop={handleGridDrop}
     >
@@ -794,7 +2562,7 @@
                 {bookmark.initials}
               {:else}
                 <img
-                  src={`chrome://favicon/size/${FAVICON_SIZE}@2x/${encodeURIComponent(bookmark.url)}`}
+                  src={getFaviconUrl(bookmark.url)}
                   alt=""
                   loading="lazy"
                   on:error={() => showFallback(bookmark.id)}
@@ -826,6 +2594,26 @@
       </article>
     </section>
   </main>
+
+  <FolderSelectionModal
+    open={folderModalOpen}
+    rootIds={$bookmarkCache.rootIds ?? []}
+    expandedIds={effectiveExpandedFolderIds}
+    loadingIds={loadingFolderIds}
+    visibleIds={visibleFolderIds}
+    searchQuery={folderSearchQuery}
+    searchMatches={folderSearchMatches}
+    summary={folderModalOpen ? draftFolderSummary : folderSummary}
+    selectedFolderCount={folderModalOpen ? draftSelectedFolderIds?.size ?? 0 : selectedFolderIds.size}
+    totalBookmarkCount={folderModalOpen ? draftCombinedBookmarkCount : combinedBookmarkCount}
+    toggleSelection={toggleFolderSelection}
+    toggleExpansion={toggleFolderExpansion}
+    getCheckboxState={getFolderCheckboxState}
+    onSearchChange={handleFolderSearch}
+    onRequestClose={closeFolderModal}
+    onConfirmSelection={confirmFolderSelection}
+    onClearSelection={clearFolderSelection}
+  />
 </div>
 
 <dialog bind:this={backgroundDialog}>
