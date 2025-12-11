@@ -10,11 +10,13 @@ const cacheStore = writable(initialState);
 export const bookmarkCache = { subscribe: cacheStore.subscribe };
 
 function normalizeNode(node, { includeChildren = false } = {}) {
-  const children = Array.isArray(node.children) ? [...node.children] : [];
+  const hasExplicitChildren = Array.isArray(node.children);
+  const children = hasExplicitChildren ? [...node.children] : [];
   const sortedChildren = includeChildren
     ? children.sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
     : [];
   const folderChildren = children.filter((child) => !child.url);
+  const hasFolderChildren = folderChildren.length > 0;
   return {
     id: node.id,
     parentId: node.parentId ?? null,
@@ -24,7 +26,9 @@ function normalizeNode(node, { includeChildren = false } = {}) {
     isFolder: !node.url,
     childrenIds: includeChildren ? sortedChildren.map((child) => child.id) : [],
     childrenLoaded: includeChildren,
-    hasChildren: !node.url && (includeChildren ? sortedChildren.some((child) => !child.url) : folderChildren.length > 0),
+    hasChildren:
+      !node.url &&
+      (includeChildren || hasExplicitChildren ? hasFolderChildren : true),
   };
 }
 

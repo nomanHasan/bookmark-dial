@@ -4,18 +4,28 @@ import { resolve } from "path";
 
 export default defineConfig({
   plugins: [svelte()],
+  server: {
+    port: 5740,
+  },
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
     },
   },
   publicDir: "public",
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: "modern-compiler",
+      },
+    },
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        newtab: resolve(__dirname, "newtab.html"),
+        index: resolve(__dirname, "index.html"),
       },
     },
   },

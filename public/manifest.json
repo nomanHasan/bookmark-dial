@@ -4,7 +4,7 @@
   "description": "Replaces the new tab page with a bookmark-backed dial synced via your Chrome bookmarks.",
   "version": "1.0.0",
   "chrome_url_overrides": {
-    "newtab": "newtab.html"
+    "newtab": "index.html"
   },
   "permissions": [
     "bookmarks",

@@ -146,10 +146,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false;
 });
 
-chrome.bookmarks.onRemoved.addListener(async (id, removeInfo) => {
-  if (!removeInfo?.node || removeInfo.node.url) {
-    return;
-  }
+chrome.bookmarks.onRemoved.addListener(async (id, _removeInfo) => {
+  // Chrome's onRemoved does not expose the removed node; we only need to react
+  // when the speed dial folder itself is removed. handleRemovedFolder checks the id.
   try {
     await handleRemovedFolder(id);
   } catch (error) {
