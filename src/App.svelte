@@ -405,10 +405,10 @@
       gradientId: DEFAULT_GRADIENT?.id ?? GRADIENT_OPTIONS[0].id,
     },
     titleBackdrop: false,
-    groupFoldersTogether: true,
-    folderColumnWidth: 1040,
+    mergeAllBookmarks: true,
+    folderColumnWidth: 1170,
     folderHeaderLayout: "default",
-    compactFolderHeader: false,
+    compactFolderHeader: true,
   };
 
   const DEFAULT_SYNC_PREFERENCES = {
@@ -559,7 +559,7 @@
       accent: DEFAULT_SETTINGS.accent,
       background: { ...DEFAULT_SETTINGS.background },
       titleBackdrop: DEFAULT_SETTINGS.titleBackdrop,
-      groupFoldersTogether: DEFAULT_SETTINGS.groupFoldersTogether,
+      mergeAllBookmarks: DEFAULT_SETTINGS.mergeAllBookmarks,
       folderColumnWidth: DEFAULT_SETTINGS.folderColumnWidth,
       folderHeaderLayout: DEFAULT_SETTINGS.folderHeaderLayout,
       compactFolderHeader: DEFAULT_SETTINGS.compactFolderHeader,
@@ -623,10 +623,10 @@
     const gradientId = normalizeGradient(background.gradientId);
     const hasTitleBackdrop = typeof stored.titleBackdrop === "boolean";
     const titleBackdrop = hasTitleBackdrop ? stored.titleBackdrop : DEFAULT_SETTINGS.titleBackdrop;
-    const hasGroupFoldersPreference = typeof stored.groupFoldersTogether === "boolean";
-    const groupFoldersTogether = hasGroupFoldersPreference
-      ? stored.groupFoldersTogether
-      : DEFAULT_SETTINGS.groupFoldersTogether;
+    const hasMergePreference = typeof stored.mergeAllBookmarks === "boolean" || typeof stored.groupFoldersTogether === "boolean";
+    const mergeAllBookmarks = hasMergePreference
+      ? (stored.mergeAllBookmarks ?? stored.groupFoldersTogether)
+      : DEFAULT_SETTINGS.mergeAllBookmarks;
     const folderColumnWidth =
       typeof stored.folderColumnWidth === "number"
         ? stored.folderColumnWidth
@@ -647,7 +647,7 @@
       mode !== (stored.background?.mode ?? DEFAULT_SETTINGS.background.mode) ||
       gradientId !== (stored.background?.gradientId ?? DEFAULT_SETTINGS.background.gradientId) ||
       !hasTitleBackdrop ||
-      !hasGroupFoldersPreference ||
+      !hasMergePreference ||
       folderColumnWidth !== stored.folderColumnWidth ||
       folderHeaderLayout !== stored.folderHeaderLayout ||
       compactFolderHeader !== stored.compactFolderHeader;
@@ -662,8 +662,8 @@
         },
         titleBackdrop,
         titleBackdrop,
-        groupFoldersTogether,
-        groupFoldersTogether,
+        mergeAllBookmarks,
+        mergeAllBookmarks,
         folderColumnWidth,
         folderHeaderLayout,
         compactFolderHeader,
@@ -836,7 +836,7 @@
       theme: settings.theme,
       accent: settings.accent,
       titleBackdrop: settings.titleBackdrop,
-      groupFoldersTogether: settings.groupFoldersTogether,
+      mergeAllBookmarks: settings.mergeAllBookmarks,
       folderColumnWidth: settings.folderColumnWidth,
       folderHeaderLayout: settings.folderHeaderLayout,
       compactFolderHeader: settings.compactFolderHeader,
@@ -911,14 +911,14 @@
     };
   }
 
-  function setGroupFoldersTogether(enabled) {
+  function setMergeAllBookmarks(enabled) {
     const nextValue = Boolean(enabled);
-    if (settings.groupFoldersTogether === nextValue) {
+    if (settings.mergeAllBookmarks === nextValue) {
       return;
     }
     settings = {
       ...settings,
-      groupFoldersTogether: nextValue,
+      mergeAllBookmarks: nextValue,
     };
   }
 
@@ -1248,25 +1248,33 @@
     const aggregated = [];
     const folderGroups = [];
     working.forEach((folderId) => {
-      const bookmarkNodes = gatherBookmarksForFolder(state, folderId);
+      const allBookmarkNodes = gatherBookmarksForFolder(state, folderId, [], true);
+      const directBookmarkNodes = gatherBookmarksForFolder(state, folderId, [], false);
       const path = getFolderPath(folderId);
       const label = path[path.length - 1] || "Untitled folder";
-      const folderItems = bookmarkNodes.map((node) => {
+      allBookmarkNodes.forEach((node) => {
+        const normalized = normalizeUrl(node.url) || node.url;
+        const key = (normalized || node.url || node.id).toLowerCase();
+        if (!seenUrls.has(key)) {
+          seenUrls.set(key, node.id);
+          aggregated.push({
+            ...node,
+            sourceFolderId: folderId,
+            sourcePath: path,
+          });
+        }
+      });
+      const folderItems = directBookmarkNodes.map((node) => {
         const normalized = normalizeUrl(node.url) || node.url;
         const key = (normalized || node.url || node.id).toLowerCase();
         const folderSet = folderUrlSets.get(folderId) ?? new Set();
         folderSet.add(key);
         folderUrlSets.set(folderId, folderSet);
-        const enriched = {
+        return {
           ...node,
           sourceFolderId: folderId,
           sourcePath: path,
         };
-        if (!seenUrls.has(key)) {
-          seenUrls.set(key, node.id);
-          aggregated.push(enriched);
-        }
-        return enriched;
       });
       folderGroups.push({
         id: folderId,
@@ -1320,7 +1328,7 @@
     }
   }
 
-  function gatherBookmarksForFolder(state, folderId, bucket = []) {
+  function gatherBookmarksForFolder(state, folderId, bucket = [], recursive = true) {
     const folder = state.nodesById[folderId];
     if (!folder || !folder.isFolder) {
       return bucket;
@@ -1333,8 +1341,8 @@
       }
       if (child.url) {
         bucket.push(child);
-      } else {
-        gatherBookmarksForFolder(state, childId, bucket);
+      } else if (recursive) {
+        gatherBookmarksForFolder(state, childId, bucket, true);
       }
     });
     return bucket;
@@ -1700,7 +1708,7 @@
       nextSettings.background.mode !== settings.background.mode ||
       nextSettings.background.gradientId !== settings.background.gradientId ||
       nextSettings.titleBackdrop !== settings.titleBackdrop ||
-      nextSettings.groupFoldersTogether !== settings.groupFoldersTogether ||
+      nextSettings.mergeAllBookmarks !== settings.mergeAllBookmarks ||
       nextSettings.folderColumnWidth !== settings.folderColumnWidth ||
       nextSettings.folderHeaderLayout !== settings.folderHeaderLayout ||
       nextSettings.compactFolderHeader !== settings.compactFolderHeader;
@@ -2146,7 +2154,7 @@ function createMockChrome() {
         theme: DEFAULT_SETTINGS.theme,
         accent: DEFAULT_SETTINGS.accent,
         titleBackdrop: DEFAULT_SETTINGS.titleBackdrop,
-        groupFoldersTogether: DEFAULT_SETTINGS.groupFoldersTogether,
+        mergeAllBookmarks: DEFAULT_SETTINGS.mergeAllBookmarks,
         background: { ...DEFAULT_SETTINGS.background },
         folderSelection: { selectedIds: [mockFolderId], expandedIds: [] },
       },
@@ -2506,7 +2514,7 @@ function createMockChrome() {
               theme: DEFAULT_SETTINGS.theme,
               accent: DEFAULT_SETTINGS.accent,
               titleBackdrop: DEFAULT_SETTINGS.titleBackdrop,
-              groupFoldersTogether: DEFAULT_SETTINGS.groupFoldersTogether,
+              mergeAllBookmarks: DEFAULT_SETTINGS.mergeAllBookmarks,
               background: { ...DEFAULT_SETTINGS.background },
               folderSelection: { selectedIds: [mockFolderId], expandedIds: [] },
             },
@@ -2816,25 +2824,25 @@ function createMockChrome() {
       <label class="settings-toggle folder-group-toggle">
         <input
           type="checkbox"
-          checked={settings.groupFoldersTogether}
-          on:change={(event) => setGroupFoldersTogether(event.currentTarget.checked)}
+          checked={settings.mergeAllBookmarks}
+          on:change={(event) => setMergeAllBookmarks(event.currentTarget.checked)}
         />
         <div class="settings-toggle__body">
-          <span class="settings-toggle__label">Group all folders together</span>
+          <span class="settings-toggle__label">Merge bookmarks from all folders</span>
           <span class="settings-toggle__description">
-            Combine folder shortcuts into one deduplicated grid.
+            Display all bookmarks in a single deduplicated grid.
           </span>
         </div>
       </label>
 
-      {#if !settings.groupFoldersTogether}
+      {#if !settings.mergeAllBookmarks}
         <div class="ungrouped-settings">
           <label class="settings-control">
             <span class="settings-control__label">Folder width</span>
             <input
               type="range"
-              min="300"
-              max="1600"
+              min="480"
+              max="1860"
               step="20"
               value={settings.folderColumnWidth}
               on:input={(e) => setFolderColumnWidth(e.currentTarget.value)}
@@ -2850,32 +2858,10 @@ function createMockChrome() {
             <div class="settings-toggle__body">
               <span class="settings-toggle__label">Compact header</span>
               <span class="settings-toggle__description">
-                Hide folder path unless hovered.
+                Hide folder path to save space.
               </span>
             </div>
           </label>
-
-          <div class="settings-control">
-            <span class="settings-control__label">Header layout</span>
-            <div class="choice-row">
-              <button
-                type="button"
-                class="choice-button"
-                data-active={settings.folderHeaderLayout === "default"}
-                on:click={() => setFolderHeaderLayout("default")}
-              >
-                Title first
-              </button>
-              <button
-                type="button"
-                class="choice-button"
-                data-active={settings.folderHeaderLayout === "swapped"}
-                on:click={() => setFolderHeaderLayout("swapped")}
-              >
-                Path first
-              </button>
-            </div>
-          </div>
         </div>
       {/if}
     </section>
@@ -2893,7 +2879,7 @@ function createMockChrome() {
       {statusMessage}
     </section>
 
-    {#if settings.groupFoldersTogether}
+    {#if settings.mergeAllBookmarks}
       <section id="dial-grid" class="grid" aria-label="Bookmark Dial links">
         {#each bookmarks as bookmark (bookmark.id)}
           <BookmarkTile
@@ -2922,31 +2908,11 @@ function createMockChrome() {
               <div class="folder-section__titles">
                 {#if settings.compactFolderHeader}
                   <h4 class="folder-section__title" title={group.fullPath}>{group.label}</h4>
-                {:else if settings.folderHeaderLayout === 'swapped'}
-                  {#if group.fullPath && group.fullPath !== group.label}
-                    <p class="folder-section__path">{group.fullPath}</p>
-                  {/if}
-                  <h4 class="folder-section__title">{group.label}</h4>
                 {:else}
                   <h4 class="folder-section__title">{group.label}</h4>
                   {#if group.fullPath && group.fullPath !== group.label}
                     <p class="folder-section__path">{group.fullPath}</p>
                   {/if}
-                {/if}
-              </div>
-              <div class="folder-section__actions">
-                {#if !settings.compactFolderHeader}
-                  <span class="folder-section__count">
-                    {group.items.length} shortcut{group.items.length === 1 ? "" : "s"}
-                  </span>
-                  <button
-                    type="button"
-                    class="ghost-button folder-section__add"
-                    on:click={() => handleAddBookmark(group.id)}
-                  >
-                    <span aria-hidden="true">+</span>
-                    <span>Add shortcut</span>
-                  </button>
                 {/if}
               </div>
             </header>
@@ -2968,32 +2934,26 @@ function createMockChrome() {
                     getFaviconUrl={getFaviconUrl}
                   />
                 {/each}
-                {#if settings.compactFolderHeader}
-                  <article class="tile add-tile" draggable="false">
-                    <button class="add-button" type="button" on:click={() => handleAddBookmark(group.id)}>
-                      <span aria-hidden="true">+</span>
-                      <div>Add shortcut</div>
-                    </button>
-                  </article>
-                {/if}
+                <article class="tile add-tile" draggable="false">
+                  <button class="add-button" type="button" on:click={() => handleAddBookmark(group.id)}>
+                    <span aria-hidden="true">+</span>
+                    <div>Add shortcut</div>
+                  </button>
+                </article>
               </div>
             {:else}
-              {#if settings.compactFolderHeader}
-                <div
-                  class="grid folder-section__grid"
-                  role="group"
-                  aria-label={`Shortcuts in ${group.fullPath || group.label}`}
-                >
-                  <article class="tile add-tile" draggable="false">
-                    <button class="add-button" type="button" on:click={() => handleAddBookmark(group.id)}>
-                      <span aria-hidden="true">+</span>
-                      <div>Add shortcut</div>
-                    </button>
-                  </article>
-                </div>
-              {:else}
-                <p class="folder-section__empty">No shortcuts in this folder.</p>
-              {/if}
+              <div
+                class="grid folder-section__grid"
+                role="group"
+                aria-label={`Shortcuts in ${group.fullPath || group.label}`}
+              >
+                <article class="tile add-tile" draggable="false">
+                  <button class="add-button" type="button" on:click={() => handleAddBookmark(group.id)}>
+                    <span aria-hidden="true">+</span>
+                    <div>Add shortcut</div>
+                  </button>
+                </article>
+              </div>
             {/if}
           </section>
         {/each}
