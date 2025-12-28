@@ -11,13 +11,24 @@ A modern Chrome extension that replaces your new tab page with a beautiful, cust
 - **Live Sync**: Real-time updates when bookmarks are added, edited, moved, or removed
 - **Deduplication**: When merging multiple folders, duplicate URLs are automatically filtered out
 - **Quick Add**: Add new shortcuts directly from the new tab page with a simple prompt interface
-- **Edit & Remove**: Right-click menu on each tile for quick editing or removal of bookmarks
+- **Edit & Remove**: Context menu and tile menu for editing or removing bookmarks
+- **Drag-and-Drop Reordering**: Drag bookmarks to reorder them within your dial
+- **Right-Click Context Menu**: Quick access to Open in new tab, Copy URL, Edit, and Remove actions
+- **Undo Support**: Toast notifications with undo button when removing bookmarks
 
 ### Display Modes
 
 - **Merged View**: Combine all bookmarks from selected folders into a single, deduplicated grid
 - **Folder Groups**: Display bookmarks organized by their parent folders with customizable column widths
 - **Compact Headers**: Toggle between full folder paths and compact folder names in grouped view
+
+### Keyboard Navigation
+
+- **Arrow Keys**: Navigate between bookmark tiles using ←↑↓→
+- **Enter**: Open the focused bookmark
+- **Delete/Backspace**: Remove the focused bookmark
+- **Forward Slash**: Quick access to bookmark search (when enabled)
+- **Escape**: Close search, modals, or context menus
 
 ### Theming & Customization
 
@@ -34,6 +45,14 @@ A modern Chrome extension that replaces your new tab page with a beautiful, cust
 - **Responsive Grid**: Adaptive layout that works beautifully on any screen size
 - **Smooth Animations**: Polished transitions throughout the interface
 - **Glassmorphism UI**: Modern frosted glass effects on settings panel and overlays
+- **Toast Notifications**: Non-intrusive notifications with action buttons
+
+### Experimental Features
+
+These features are disabled by default and can be enabled in Settings > Experimental:
+
+- **Bookmark Search**: Filter bookmarks by title or URL with a search bar
+- **Top Sites Integration**: Show your most visited sites alongside bookmarks (uses Chrome's Top Sites API)
 
 ### Data & Sync
 
@@ -41,6 +60,13 @@ A modern Chrome extension that replaces your new tab page with a beautiful, cust
 - **Local Storage**: Custom background images stored locally on each device
 - **Automatic Folder Creation**: A "Bookmark Dial" folder is automatically created if it doesn't exist
 - **Folder Recovery**: Automatically recreates the default folder if accidentally deleted
+
+### Accessibility
+
+- **Keyboard Navigation**: Full keyboard support for navigating and managing bookmarks
+- **Screen Reader Support**: Proper ARIA labels and roles throughout
+- **Focus Management**: Clear focus indicators for keyboard users
+- **Welcome Onboarding**: First-time users see a helpful welcome modal explaining features
 
 ## Installation
 
@@ -125,12 +151,16 @@ bookmark-dial/
 │   └── icons/              # Extension icons (cog, pencil SVGs)
 └── src/
     ├── main.js             # Svelte app entry point
-    ├── App.svelte          # Main application component (~3000 lines)
-    ├── app.scss            # Global styles (~1300 lines)
+    ├── App.svelte          # Main application component
+    ├── app.scss            # Global styles
     ├── components/
-    │   ├── BookmarkTile.svelte        # Individual bookmark tile
+    │   ├── BookmarkTile.svelte        # Individual bookmark tile with drag-drop
+    │   ├── ContextMenu.svelte         # Right-click context menu
     │   ├── FolderNode.svelte          # Recursive folder tree node
-    │   └── FolderSelectionModal.svelte # Folder picker modal
+    │   ├── FolderSelectionModal.svelte # Folder picker modal
+    │   ├── SearchBar.svelte           # Bookmark search input
+    │   ├── ToastNotification.svelte   # Toast notification system
+    │   └── WelcomeModal.svelte        # First-time user onboarding
     ├── data/
     │   ├── mock.js         # Developer tools mock data
     │   └── literature.js   # Literature links mock data

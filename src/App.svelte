@@ -2,6 +2,10 @@
   import { onMount, tick } from "svelte";
   import FolderSelectionModal from "./components/FolderSelectionModal.svelte";
   import BookmarkTile from "./components/BookmarkTile.svelte";
+  import ToastNotification from "./components/ToastNotification.svelte";
+  import WelcomeModal from "./components/WelcomeModal.svelte";
+  import ContextMenu from "./components/ContextMenu.svelte";
+  import SearchBar from "./components/SearchBar.svelte";
   import { developerTools } from './data/mock.js';
   import { literatureLinks } from './data/literature.js';
   import {
@@ -30,7 +34,8 @@
   const BACKGROUND_KEY = "customBackgroundImage";
   const SETTINGS_KEY = "uiPreferences";
   const SYNC_SETTINGS_KEY = "dialPreferences";
-  const STORAGE_VERSION = 1;
+  const STORAGE_VERSION = 2;
+  const WELCOME_KEY = "hasSeenWelcome";
   const DEFAULT_FOLDER_SELECTION = {
     selectedIds: [],
     expandedIds: [],
@@ -407,8 +412,9 @@
     titleBackdrop: false,
     mergeAllBookmarks: true,
     folderColumnWidth: 1170,
-    folderHeaderLayout: "default",
     compactFolderHeader: true,
+    enableBookmarkSearch: false,
+    enableTopSites: false,
   };
 
   const DEFAULT_SYNC_PREFERENCES = {
@@ -468,9 +474,39 @@
   let accentOptionsOrdered = [...ACCENT_OPTIONS];
   let gradientOptionsOrdered = [...GRADIENT_OPTIONS];
 
+  // Toast notifications
+  let toasts = [];
+  let toastIdCounter = 0;
+
+  // Welcome modal
+  let showWelcome = false;
+
+  // Context menu
+  let contextMenuVisible = false;
+  let contextMenuPosition = { x: 0, y: 0 };
+  let contextMenuBookmark = null;
+
+  // Bookmark search
+  let bookmarkSearchQuery = "";
+  let bookmarkSearchVisible = false;
+
+  // Top Sites
+  let topSites = [];
+  let topSitesLoaded = false;
+
+  // Keyboard navigation
+  let focusedBookmarkIndex = -1;
+  let gridRef = null;
+
+  // Drag and drop
+  let draggedBookmark = null;
+  let dragOverBookmark = null;
+  let dragSourceFolderId = null;
+
   let persistSettingsHandle = null;
   let mediaQuery = null;
   let removeSystemThemeListener = null;
+
 
   const cleanupFns = [];
 
@@ -494,14 +530,26 @@
       }
 
       loadingSettings = false;
+      await checkWelcome();
       initialize();
     })();
 
     if (typeof window !== "undefined") {
       const keydownHandler = (event) => {
+        // Handle context menu close
+        if (contextMenuVisible && event.key === "Escape") {
+          closeContextMenu();
+          event.stopPropagation();
+          return;
+        }
         if (event.key === "Escape") {
           if (openMenuId !== null) {
             openMenuId = null;
+            event.stopPropagation();
+            return;
+          }
+          if (bookmarkSearchVisible) {
+            closeBookmarkSearch();
             event.stopPropagation();
             return;
           }
@@ -509,8 +557,24 @@
             closeSettings();
           }
         }
+        // Global keyboard shortcut for search
+        if (event.key === "/" && settings.enableBookmarkSearch && !event.ctrlKey && !event.metaKey) {
+          const target = event.target;
+          if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+            return;
+          }
+          event.preventDefault();
+          bookmarkSearchVisible = true;
+        }
       };
       const pointerdownHandler = (event) => {
+        // Close context menu on click outside
+        if (contextMenuVisible) {
+          const target = event.target;
+          if (target instanceof Element && !target.closest(".context-menu")) {
+            closeContextMenu();
+          }
+        }
         if (openMenuId === null) {
           return;
         }
@@ -561,8 +625,9 @@
       titleBackdrop: DEFAULT_SETTINGS.titleBackdrop,
       mergeAllBookmarks: DEFAULT_SETTINGS.mergeAllBookmarks,
       folderColumnWidth: DEFAULT_SETTINGS.folderColumnWidth,
-      folderHeaderLayout: DEFAULT_SETTINGS.folderHeaderLayout,
       compactFolderHeader: DEFAULT_SETTINGS.compactFolderHeader,
+      enableBookmarkSearch: DEFAULT_SETTINGS.enableBookmarkSearch,
+      enableTopSites: DEFAULT_SETTINGS.enableTopSites,
     };
   }
 
@@ -631,12 +696,18 @@
       typeof stored.folderColumnWidth === "number"
         ? stored.folderColumnWidth
         : DEFAULT_SETTINGS.folderColumnWidth;
-    const folderHeaderLayout =
-      stored.folderHeaderLayout === "swapped" ? "swapped" : DEFAULT_SETTINGS.folderHeaderLayout;
     const compactFolderHeader =
       typeof stored.compactFolderHeader === "boolean"
         ? stored.compactFolderHeader
         : DEFAULT_SETTINGS.compactFolderHeader;
+    const enableBookmarkSearch =
+      typeof stored.enableBookmarkSearch === "boolean"
+        ? stored.enableBookmarkSearch
+        : DEFAULT_SETTINGS.enableBookmarkSearch;
+    const enableTopSites =
+      typeof stored.enableTopSites === "boolean"
+        ? stored.enableTopSites
+        : DEFAULT_SETTINGS.enableTopSites;
     const folderSelection = normalizeFolderSelection(stored.folderSelection);
     const selectionChanged =
       !arraysEqual(folderSelection.selectedIds, stored.folderSelection?.selectedIds ?? []) ||
@@ -649,8 +720,9 @@
       !hasTitleBackdrop ||
       !hasMergePreference ||
       folderColumnWidth !== stored.folderColumnWidth ||
-      folderHeaderLayout !== stored.folderHeaderLayout ||
-      compactFolderHeader !== stored.compactFolderHeader;
+      compactFolderHeader !== stored.compactFolderHeader ||
+      enableBookmarkSearch !== stored.enableBookmarkSearch ||
+      enableTopSites !== stored.enableTopSites;
 
     return {
       settings: {
@@ -661,12 +733,11 @@
           gradientId,
         },
         titleBackdrop,
-        titleBackdrop,
-        mergeAllBookmarks,
         mergeAllBookmarks,
         folderColumnWidth,
-        folderHeaderLayout,
         compactFolderHeader,
+        enableBookmarkSearch,
+        enableTopSites,
       },
       folderSelection,
       changed: preferenceChanged || selectionChanged || (stored.version ?? STORAGE_VERSION) !== STORAGE_VERSION,
@@ -838,8 +909,9 @@
       titleBackdrop: settings.titleBackdrop,
       mergeAllBookmarks: settings.mergeAllBookmarks,
       folderColumnWidth: settings.folderColumnWidth,
-      folderHeaderLayout: settings.folderHeaderLayout,
       compactFolderHeader: settings.compactFolderHeader,
+      enableBookmarkSearch: settings.enableBookmarkSearch,
+      enableTopSites: settings.enableTopSites,
       background: { ...settings.background },
       folderSelection: {
         selectedIds: Array.from(selectedFolderIds),
@@ -933,16 +1005,6 @@
     };
   }
 
-  function setFolderHeaderLayout(layout) {
-    if (settings.folderHeaderLayout === layout) {
-      return;
-    }
-    settings = {
-      ...settings,
-      folderHeaderLayout: layout,
-    };
-  }
-
   function setCompactFolderHeader(enabled) {
     const nextValue = Boolean(enabled);
     if (settings.compactFolderHeader === nextValue) {
@@ -952,6 +1014,35 @@
       ...settings,
       compactFolderHeader: nextValue,
     };
+  }
+
+  function setEnableBookmarkSearch(enabled) {
+    const nextValue = Boolean(enabled);
+    if (settings.enableBookmarkSearch === nextValue) {
+      return;
+    }
+    settings = {
+      ...settings,
+      enableBookmarkSearch: nextValue,
+    };
+    if (!nextValue) {
+      bookmarkSearchVisible = false;
+      bookmarkSearchQuery = "";
+    }
+  }
+
+  function setEnableTopSites(enabled) {
+    const nextValue = Boolean(enabled);
+    if (settings.enableTopSites === nextValue) {
+      return;
+    }
+    settings = {
+      ...settings,
+      enableTopSites: nextValue,
+    };
+    if (nextValue && !topSitesLoaded) {
+      loadTopSites();
+    }
   }
 
   function selectGradient(gradientId) {
@@ -1710,8 +1801,9 @@
       nextSettings.titleBackdrop !== settings.titleBackdrop ||
       nextSettings.mergeAllBookmarks !== settings.mergeAllBookmarks ||
       nextSettings.folderColumnWidth !== settings.folderColumnWidth ||
-      nextSettings.folderHeaderLayout !== settings.folderHeaderLayout ||
-      nextSettings.compactFolderHeader !== settings.compactFolderHeader;
+      nextSettings.compactFolderHeader !== settings.compactFolderHeader ||
+      nextSettings.enableBookmarkSearch !== settings.enableBookmarkSearch ||
+      nextSettings.enableTopSites !== settings.enableTopSites;
     if (settingsChanged) {
       settings = {
         ...settings,
@@ -1790,6 +1882,312 @@
 
   function closeTileMenu() {
     openMenuId = null;
+  }
+
+  // Toast notification functions
+  function addToast(message, type = "info", undoData = null, duration = 5000) {
+    const id = ++toastIdCounter;
+    const toast = { id, message, type, undoData };
+    toasts = [...toasts, toast];
+    if (duration > 0) {
+      setTimeout(() => dismissToast(id), duration);
+    }
+    return id;
+  }
+
+  function dismissToast(id) {
+    toasts = toasts.filter((t) => t.id !== id);
+  }
+
+  async function handleToastUndo(toast) {
+    if (!toast?.undoData) return;
+    const { action, data } = toast.undoData;
+    try {
+      if (action === "removeBookmark" && data) {
+        await chromeApi.bookmarks.create({
+          parentId: data.parentId,
+          title: data.title,
+          url: data.url,
+          index: data.index,
+        });
+        addToast("Bookmark restored", "success");
+      }
+    } catch (error) {
+      console.error("Bookmark Dial: undo failed", error);
+      addToast("Failed to undo", "error");
+    }
+    dismissToast(toast.id);
+  }
+
+  // Welcome modal functions
+  async function checkWelcome() {
+    if (!shouldPersistPreferences) {
+      showWelcome = true;
+      return;
+    }
+    try {
+      const stored = await chromeApi.storage.local.get(WELCOME_KEY);
+      if (!stored?.[WELCOME_KEY]) {
+        showWelcome = true;
+      }
+    } catch (error) {
+      console.warn("Bookmark Dial: failed to check welcome state", error);
+    }
+  }
+
+  async function dismissWelcome() {
+    showWelcome = false;
+    if (shouldPersistPreferences) {
+      try {
+        await chromeApi.storage.local.set({ [WELCOME_KEY]: true });
+      } catch (error) {
+        console.warn("Bookmark Dial: failed to save welcome state", error);
+      }
+    }
+  }
+
+  // Context menu functions
+  function showContextMenu(event, bookmark) {
+    event.preventDefault();
+    closeTileMenu();
+    contextMenuBookmark = bookmark;
+    const menuWidth = 180;
+    const menuHeight = 180;
+    let x = event.clientX;
+    let y = event.clientY;
+    if (x + menuWidth > window.innerWidth) {
+      x = window.innerWidth - menuWidth - 8;
+    }
+    if (y + menuHeight > window.innerHeight) {
+      y = window.innerHeight - menuHeight - 8;
+    }
+    contextMenuPosition = { x, y };
+    contextMenuVisible = true;
+  }
+
+  function closeContextMenu() {
+    contextMenuVisible = false;
+    contextMenuBookmark = null;
+  }
+
+  async function handleContextMenuOpenNewTab() {
+    if (contextMenuBookmark?.url) {
+      window.open(contextMenuBookmark.url, "_blank");
+    }
+    closeContextMenu();
+  }
+
+  async function handleContextMenuCopyUrl() {
+    if (contextMenuBookmark?.url) {
+      try {
+        await navigator.clipboard.writeText(contextMenuBookmark.url);
+        addToast("URL copied to clipboard", "success");
+      } catch (error) {
+        console.error("Bookmark Dial: copy failed", error);
+        addToast("Failed to copy URL", "error");
+      }
+    }
+    closeContextMenu();
+  }
+
+  function handleContextMenuEdit() {
+    if (contextMenuBookmark) {
+      editBookmark(contextMenuBookmark);
+    }
+    closeContextMenu();
+  }
+
+  function handleContextMenuRemove() {
+    if (contextMenuBookmark) {
+      removeBookmark(contextMenuBookmark.id);
+    }
+    closeContextMenu();
+  }
+
+  // Bookmark search functions
+  function toggleBookmarkSearch() {
+    bookmarkSearchVisible = !bookmarkSearchVisible;
+    if (!bookmarkSearchVisible) {
+      bookmarkSearchQuery = "";
+    }
+  }
+
+  function handleBookmarkSearchChange(query) {
+    bookmarkSearchQuery = query;
+  }
+
+  function closeBookmarkSearch() {
+    bookmarkSearchVisible = false;
+    bookmarkSearchQuery = "";
+  }
+
+  $: filteredBookmarks = (() => {
+    if (!bookmarkSearchQuery.trim()) return bookmarks;
+    const query = bookmarkSearchQuery.toLowerCase().trim();
+    return bookmarks.filter((b) =>
+      (b.title?.toLowerCase().includes(query)) ||
+      (b.url?.toLowerCase().includes(query)) ||
+      (b.displayTitle?.toLowerCase().includes(query))
+    );
+  })();
+
+  $: filteredFolderGroups = (() => {
+    if (!bookmarkSearchQuery.trim()) return folderBookmarkGroups;
+    const query = bookmarkSearchQuery.toLowerCase().trim();
+    return folderBookmarkGroups.map((group) => ({
+      ...group,
+      items: group.items.filter((b) =>
+        (b.title?.toLowerCase().includes(query)) ||
+        (b.url?.toLowerCase().includes(query)) ||
+        (b.displayTitle?.toLowerCase().includes(query))
+      ),
+    })).filter((group) => group.items.length > 0);
+  })();
+
+  // Top Sites functions
+  async function loadTopSites() {
+    if (topSitesLoaded) return;
+    if (!chromeApi?.topSites?.get) {
+      topSitesLoaded = true;
+      return;
+    }
+    try {
+      const sites = await chromeApi.topSites.get();
+      topSites = (sites || []).map((site, index) => ({
+        id: `topsite-${index}`,
+        title: site.title || tryExtractHostname(site.url),
+        url: site.url,
+        displayTitle: site.title || tryExtractHostname(site.url),
+        initials: deriveInitials(site.title || tryExtractHostname(site.url)),
+        palette: generateDialPalette(site.title || tryExtractHostname(site.url)),
+        fallback: false,
+        isTopSite: true,
+      }));
+      topSitesLoaded = true;
+    } catch (error) {
+      console.warn("Bookmark Dial: failed to load top sites", error);
+      topSitesLoaded = true;
+    }
+  }
+
+  $: if (settings.enableTopSites && !topSitesLoaded) {
+    loadTopSites();
+  }
+
+  // Keyboard navigation functions
+  function handleGridKeydown(event) {
+    const displayedBookmarks = settings.mergeAllBookmarks
+      ? (settings.enableTopSites ? [...filteredBookmarks, ...topSites] : filteredBookmarks)
+      : [];
+    if (!displayedBookmarks.length) return;
+
+    const columns = getGridColumns();
+    const total = displayedBookmarks.length;
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      focusedBookmarkIndex = Math.min(focusedBookmarkIndex + 1, total - 1);
+      if (focusedBookmarkIndex < 0) focusedBookmarkIndex = 0;
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      focusedBookmarkIndex = Math.max(focusedBookmarkIndex - 1, 0);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      const newIndex = focusedBookmarkIndex + columns;
+      focusedBookmarkIndex = newIndex < total ? newIndex : focusedBookmarkIndex;
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      const newIndex = focusedBookmarkIndex - columns;
+      focusedBookmarkIndex = newIndex >= 0 ? newIndex : focusedBookmarkIndex;
+    } else if (event.key === "Enter" && focusedBookmarkIndex >= 0) {
+      event.preventDefault();
+      const bookmark = displayedBookmarks[focusedBookmarkIndex];
+      if (bookmark?.url) {
+        window.location.href = bookmark.url;
+      }
+    } else if ((event.key === "Delete" || event.key === "Backspace") && focusedBookmarkIndex >= 0) {
+      event.preventDefault();
+      const bookmark = displayedBookmarks[focusedBookmarkIndex];
+      if (bookmark && !bookmark.isTopSite) {
+        removeBookmark(bookmark.id);
+      }
+    } else if (event.key === "/" && settings.enableBookmarkSearch) {
+      event.preventDefault();
+      bookmarkSearchVisible = true;
+    } else if (event.key === "Escape") {
+      focusedBookmarkIndex = -1;
+      closeContextMenu();
+    }
+  }
+
+  function getGridColumns() {
+    if (!gridRef) return 4;
+    const style = getComputedStyle(gridRef);
+    const columns = style.getPropertyValue("grid-template-columns");
+    return columns.split(" ").length || 4;
+  }
+
+  function handleTileFocus(index) {
+    focusedBookmarkIndex = index;
+  }
+
+  // Drag and drop functions
+  function handleDragStart(event, bookmark, folderId = null) {
+    if (bookmark.isTopSite) {
+      event.preventDefault();
+      return;
+    }
+    draggedBookmark = bookmark;
+    dragSourceFolderId = folderId || bookmark.parentId;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", bookmark.id);
+  }
+
+  function handleDragOver(event, bookmark) {
+    if (!draggedBookmark || draggedBookmark.id === bookmark.id) return;
+    if (bookmark.isTopSite) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    dragOverBookmark = bookmark;
+  }
+
+  function handleDragLeave(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      dragOverBookmark = null;
+    }
+  }
+
+  async function handleDrop(event, targetBookmark) {
+    event.preventDefault();
+    if (!draggedBookmark || draggedBookmark.id === targetBookmark.id) {
+      resetDragState();
+      return;
+    }
+    if (targetBookmark.isTopSite) {
+      resetDragState();
+      return;
+    }
+    try {
+      await chromeApi.bookmarks.move(draggedBookmark.id, {
+        parentId: targetBookmark.parentId,
+        index: targetBookmark.index,
+      });
+      addToast("Bookmark moved", "success");
+    } catch (error) {
+      console.error("Bookmark Dial: move failed", error);
+      addToast("Failed to move bookmark", "error");
+    }
+    resetDragState();
+  }
+
+  function handleDragEnd() {
+    resetDragState();
+  }
+
+  function resetDragState() {
+    draggedBookmark = null;
+    dragOverBookmark = null;
+    dragSourceFolderId = null;
   }
 
   async function handleAddBookmark(targetFolderId = null) {
@@ -1914,14 +2312,34 @@
 
   async function removeBookmark(id) {
     closeTileMenu();
-    if (!confirm("Remove this shortcut?")) {
+    closeContextMenu();
+    // Find the bookmark to get its data for potential undo
+    const bookmark = bookmarks.find((b) => b.id === id) ||
+      folderBookmarkGroups.flatMap((g) => g.items).find((b) => b.id === id);
+    if (!bookmark) {
       return;
     }
     try {
+      // Get full bookmark info before removing
+      const [fullBookmark] = await chromeApi.bookmarks.get(id);
       await chromeApi.bookmarks.remove(id);
+      addToast(
+        `"${bookmark.displayTitle || bookmark.title}" removed`,
+        "info",
+        {
+          action: "removeBookmark",
+          data: {
+            parentId: fullBookmark.parentId,
+            title: fullBookmark.title,
+            url: fullBookmark.url,
+            index: fullBookmark.index,
+          },
+        },
+        8000
+      );
     } catch (error) {
       console.error("Bookmark Dial: failed to remove bookmark", error);
-      alert("Unable to remove shortcut.");
+      addToast("Failed to remove bookmark", "error");
     }
   }
 
@@ -2636,6 +3054,21 @@ function createMockChrome() {
         },
       },
     },
+    topSites: {
+      async get() {
+        // Mock top sites for development
+        return [
+          { title: "Google", url: "https://www.google.com" },
+          { title: "YouTube", url: "https://www.youtube.com" },
+          { title: "Facebook", url: "https://www.facebook.com" },
+          { title: "Twitter", url: "https://twitter.com" },
+          { title: "Reddit", url: "https://www.reddit.com" },
+          { title: "Wikipedia", url: "https://www.wikipedia.org" },
+          { title: "Amazon", url: "https://www.amazon.com" },
+          { title: "Netflix", url: "https://www.netflix.com" },
+        ];
+      },
+    },
   };
 }
 
@@ -2865,6 +3298,36 @@ function createMockChrome() {
         </div>
       {/if}
     </section>
+
+    <section class="settings-group">
+      <h3>Experimental</h3>
+      <label class="settings-toggle">
+        <input
+          type="checkbox"
+          checked={settings.enableBookmarkSearch}
+          on:change={(e) => setEnableBookmarkSearch(e.currentTarget.checked)}
+        />
+        <div class="settings-toggle__body">
+          <span class="settings-toggle__label">Bookmark search</span>
+          <span class="settings-toggle__description">
+            Press <kbd>/</kbd> to search bookmarks.
+          </span>
+        </div>
+      </label>
+      <label class="settings-toggle">
+        <input
+          type="checkbox"
+          checked={settings.enableTopSites}
+          on:change={(e) => setEnableTopSites(e.currentTarget.checked)}
+        />
+        <div class="settings-toggle__body">
+          <span class="settings-toggle__label">Show frequently visited</span>
+          <span class="settings-toggle__description">
+            Include your most visited sites alongside bookmarks.
+          </span>
+        </div>
+      </label>
+    </section>
   </aside>
 
   <div
@@ -2875,34 +3338,88 @@ function createMockChrome() {
   ></div>
 
   <main>
+    {#if settings.enableBookmarkSearch}
+      <SearchBar
+        visible={bookmarkSearchVisible}
+        query={bookmarkSearchQuery}
+        onSearchChange={handleBookmarkSearchChange}
+        onClose={closeBookmarkSearch}
+      />
+    {/if}
+
     <section id="status" role="status" aria-live="polite" data-tone={statusMessage ? statusTone : null}>
       {statusMessage}
     </section>
 
     {#if settings.mergeAllBookmarks}
-      <section id="dial-grid" class="grid" aria-label="Bookmark Dial links">
-        {#each bookmarks as bookmark (bookmark.id)}
+      <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
+      <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+      <div
+        id="dial-grid"
+        class="grid"
+        aria-label="Bookmark Dial links"
+        bind:this={gridRef}
+        on:keydown={handleGridKeydown}
+        tabindex="0"
+        role="group"
+      >
+        {#each filteredBookmarks as bookmark, index (bookmark.id)}
           <BookmarkTile
             {bookmark}
             titleBackdrop={settings.titleBackdrop}
             menuOpen={openMenuId === bookmark.id}
+            focused={focusedBookmarkIndex === index}
+            dragging={draggedBookmark?.id === bookmark.id}
+            dragOver={dragOverBookmark?.id === bookmark.id}
             onToggleMenu={() => toggleTileMenu(bookmark.id)}
             onEdit={() => editBookmark(bookmark)}
             onRemove={() => removeBookmark(bookmark.id)}
             onFallback={() => showFallback(bookmark.id)}
+            onContextMenu={(e) => showContextMenu(e, bookmark)}
+            onFocus={() => handleTileFocus(index)}
+            onDragStart={(e) => handleDragStart(e, bookmark)}
+            onDragOver={(e) => handleDragOver(e, bookmark)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, bookmark)}
+            onDragEnd={handleDragEnd}
             getFaviconUrl={getFaviconUrl}
           />
         {/each}
+        {#if settings.enableTopSites && topSites.length > 0}
+          {#each topSites as site, siteIndex (site.id)}
+            <BookmarkTile
+              bookmark={site}
+              titleBackdrop={settings.titleBackdrop}
+              menuOpen={false}
+              focused={focusedBookmarkIndex === filteredBookmarks.length + siteIndex}
+              dragging={false}
+              dragOver={false}
+              onToggleMenu={() => {}}
+              onEdit={() => {}}
+              onRemove={() => {}}
+              onFallback={() => {}}
+              onContextMenu={() => {}}
+              onFocus={() => handleTileFocus(filteredBookmarks.length + siteIndex)}
+              onDragStart={() => {}}
+              onDragOver={() => {}}
+              onDragLeave={() => {}}
+              onDrop={() => {}}
+              onDragEnd={() => {}}
+              getFaviconUrl={getFaviconUrl}
+              isTopSite={true}
+            />
+          {/each}
+        {/if}
         <article class="tile add-tile" draggable="false">
-          <button class="add-button" type="button" on:click={handleAddBookmark}>
+          <button class="add-button" type="button" on:click={handleAddBookmark} aria-label="Add new bookmark shortcut">
             <span aria-hidden="true">+</span>
             <div>Add shortcut</div>
           </button>
         </article>
-      </section>
+      </div>
     {:else}
       <div class="folder-grid-list" aria-label="Bookmark folders" style:max-width="{settings.folderColumnWidth}px">
-        {#each folderBookmarkGroups as group (group.id)}
+        {#each filteredFolderGroups as group (group.id)}
           <section class="folder-section">
             <header class="folder-section__header">
               <div class="folder-section__titles">
@@ -2927,10 +3444,20 @@ function createMockChrome() {
                     {bookmark}
                     titleBackdrop={settings.titleBackdrop}
                     menuOpen={openMenuId === bookmark.id}
+                    focused={false}
+                    dragging={draggedBookmark?.id === bookmark.id}
+                    dragOver={dragOverBookmark?.id === bookmark.id}
                     onToggleMenu={() => toggleTileMenu(bookmark.id)}
                     onEdit={() => editBookmark(bookmark)}
                     onRemove={() => removeBookmark(bookmark.id)}
                     onFallback={() => showFallback(bookmark.id)}
+                    onContextMenu={(e) => showContextMenu(e, bookmark)}
+                    onFocus={() => {}}
+                    onDragStart={(e) => handleDragStart(e, bookmark, group.id)}
+                    onDragOver={(e) => handleDragOver(e, bookmark)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, bookmark)}
+                    onDragEnd={handleDragEnd}
                     getFaviconUrl={getFaviconUrl}
                   />
                 {/each}
@@ -2979,6 +3506,29 @@ function createMockChrome() {
     onRequestClose={closeFolderModal}
     onConfirmSelection={confirmFolderSelection}
     onClearSelection={clearFolderSelection}
+  />
+
+  <WelcomeModal
+    open={showWelcome}
+    onDismiss={dismissWelcome}
+    onGetStarted={dismissWelcome}
+  />
+
+  <ContextMenu
+    bookmark={contextMenuBookmark}
+    position={contextMenuPosition}
+    visible={contextMenuVisible}
+    on:edit={handleContextMenuEdit}
+    on:remove={handleContextMenuRemove}
+    on:opennewtab={handleContextMenuOpenNewTab}
+    on:copyurl={handleContextMenuCopyUrl}
+    on:close={closeContextMenu}
+  />
+
+  <ToastNotification
+    {toasts}
+    onDismiss={dismissToast}
+    onUndo={handleToastUndo}
   />
 </div>
 

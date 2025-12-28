@@ -2,14 +2,28 @@
   export let bookmark;
   export let titleBackdrop = false;
   export let menuOpen = false;
+  export let focused = false;
+  export let dragging = false;
+  export let dragOver = false;
+  export let isTopSite = false;
   export let onToggleMenu = () => {};
   export let onEdit = () => {};
   export let onRemove = () => {};
   export let onFallback = () => {};
+  export let onContextMenu = () => {};
+  export let onFocus = () => {};
+  export let onDragStart = () => {};
+  export let onDragOver = () => {};
+  export let onDragLeave = () => {};
+  export let onDrop = () => {};
+  export let onDragEnd = () => {};
   export let getFaviconUrl = () => "";
 
   let label = "Shortcut";
   $: label = bookmark?.displayTitle || bookmark?.title || bookmark?.url || "Shortcut";
+
+  // Only regular bookmarks (not top sites) are draggable
+  $: isDraggable = !isTopSite;
 
   function handleMenuClick(event) {
     event.preventDefault();
@@ -32,14 +46,67 @@
   function handleImageError() {
     onFallback?.();
   }
+
+  function handleContextMenu(event) {
+    event.preventDefault();
+    onContextMenu?.(event);
+  }
+
+  function handleFocus() {
+    onFocus?.();
+  }
+
+  function handleDragStart(event) {
+    if (!isDraggable) {
+      event.preventDefault();
+      return;
+    }
+    onDragStart?.(event);
+  }
+
+  function handleDragOver(event) {
+    if (!isDraggable) return;
+    event.preventDefault();
+    onDragOver?.(event);
+  }
+
+  function handleDragLeave(event) {
+    if (!isDraggable) return;
+    onDragLeave?.(event);
+  }
+
+  function handleDrop(event) {
+    if (!isDraggable) return;
+    event.preventDefault();
+    onDrop?.(event);
+  }
+
+  function handleDragEnd(event) {
+    if (!isDraggable) return;
+    onDragEnd?.(event);
+  }
 </script>
 
-<article class="tile" draggable="false">
+<article
+  class="tile"
+  class:tile--focused={focused}
+  class:tile--dragging={dragging}
+  class:tile--drag-over={dragOver}
+  class:tile--top-site={isTopSite}
+  draggable={isDraggable}
+  on:contextmenu={handleContextMenu}
+  on:dragstart={handleDragStart}
+  on:dragover={handleDragOver}
+  on:dragleave={handleDragLeave}
+  on:drop={handleDrop}
+  on:dragend={handleDragEnd}
+>
   <a
     class="tile-link"
     href={bookmark.url || "#!"}
     title={bookmark.title || bookmark.url || "Shortcut"}
     draggable="false"
+    on:focus={handleFocus}
   >
     <div
       class="tile-icon"
