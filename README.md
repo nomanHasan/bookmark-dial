@@ -40,7 +40,7 @@ A modern Chrome extension that replaces your new tab page with a beautiful, cust
 
 ### Visual Design
 
-- **Dynamic Favicons**: High-resolution favicons fetched from Chrome's internal favicon service
+- **Dynamic Favicons**: High-resolution favicons fetched via Chrome's native Favicon API
 - **Fallback Initials**: Colorful, algorithmically-generated gradient tiles when favicons aren't available
 - **Responsive Grid**: Adaptive layout that works beautifully on any screen size
 - **Smooth Animations**: Polished transitions throughout the interface

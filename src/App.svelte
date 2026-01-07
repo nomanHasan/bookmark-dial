@@ -1832,13 +1832,25 @@
     }
   }
 
-  function getFaviconUrl(url) {
-    if (realChrome?.runtime?.sendMessage) {
-      return `chrome://favicon/size/${FAVICON_SIZE}@2x/${encodeURIComponent(url)}`;
-    }
+  async function getFaviconUrl(url) {
+    // Use Chrome's native Favicon API and convert to data URI for <img> tag compatibility
     try {
-      const urlObj = new URL(url);
-      return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=${FAVICON_SIZE * 2}`;
+      const faviconUrl = new URL(chrome.runtime.getURL("/_favicon/"));
+      faviconUrl.searchParams.set("pageUrl", url);
+      faviconUrl.searchParams.set("size", FAVICON_SIZE.toString());
+      
+      const response = await fetch(faviconUrl.toString());
+      if (!response.ok) {
+        return '';
+      }
+      
+      const blob = await response.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+      });
     } catch {
       return '';
     }

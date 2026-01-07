@@ -9,7 +9,14 @@
   "permissions": [
     "bookmarks",
     "storage",
-    "topSites"
+    "topSites",
+    "favicon"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["_favicon/*"],
+      "matches": ["<all_urls>"]
+    }
   ],
   "background": {
     "service_worker": "background.js",

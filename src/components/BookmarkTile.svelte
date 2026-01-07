@@ -20,7 +20,23 @@
   export let getFaviconUrl = () => "";
 
   let label = "Shortcut";
+  let faviconSrc = "";
+  
   $: label = bookmark?.displayTitle || bookmark?.title || bookmark?.url || "Shortcut";
+  
+  // Fetch favicon asynchronously when bookmark URL changes
+  $: if (bookmark?.url && !bookmark.fallback) {
+    faviconSrc = "";
+    getFaviconUrl(bookmark.url).then((url) => {
+      if (url) {
+        faviconSrc = url;
+      } else {
+        handleImageError();
+      }
+    }).catch(() => {
+      handleImageError();
+    });
+  }
 
   // Only regular bookmarks (not top sites) are draggable
   $: isDraggable = !isTopSite;
@@ -116,7 +132,7 @@
       {#if bookmark.fallback}
         {bookmark.initials}
       {:else}
-        <img src={getFaviconUrl(bookmark.url)} alt="" loading="lazy" on:error={handleImageError} />
+        <img src={faviconSrc} alt="" loading="lazy" on:error={handleImageError} />
       {/if}
     </div>
     <div class="tile-title" class:tile-title--pill={titleBackdrop}>
