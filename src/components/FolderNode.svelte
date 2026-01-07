@@ -7,6 +7,7 @@
   export let loadingIds;
   export let visibleIds;
   export let searchMatches;
+  export let selectedIds;
   export let toggleSelection;
   export let toggleExpansion;
   export let getCheckboxState;
@@ -21,14 +22,22 @@
       const childNode = cacheState?.nodesById?.[childId];
       return childNode?.isFolder;
     }) ?? [];
-  $: canExpand = isFolder && (node?.childrenLoaded ? folderChildIds.length > 0 : node?.hasChildren);
+  // With eager loading, hasChildren is always accurate since all nodes are loaded
+  $: canExpand = isFolder && folderChildIds.length > 0;
   $: isExpanded = canExpand && expandedIds?.has(nodeId);
   $: isLoading = loadingIds?.has(nodeId);
   $: isVisible = !visibleIds || visibleIds.has(nodeId);
-  $: checkboxState = getCheckboxState ? getCheckboxState(nodeId) : "none";
+  // Re-compute checkbox state when selectedIds changes (reactive dependency)
+  $: checkboxState = getCheckboxState && selectedIds ? getCheckboxState(nodeId) : "none";
   $: if (checkboxEl) {
-    checkboxEl.indeterminate = checkboxState === "partial";
-    checkboxEl.checked = checkboxState === "selected";
+    // Handle the three states: none, partial (indeterminate), selected (checked)
+    if (checkboxState === "partial") {
+      checkboxEl.indeterminate = true;
+      checkboxEl.checked = false;
+    } else {
+      checkboxEl.indeterminate = false;
+      checkboxEl.checked = checkboxState === "selected";
+    }
   }
   $: shouldRender = Boolean(node && isFolder && isVisible);
 
@@ -87,25 +96,20 @@
 
     {#if canExpand && isExpanded}
       <ul class="folder-node__children">
-        {#if isLoading}
-          <li class="folder-node__status">Loading…</li>
-        {:else if (folderChildIds.length)}
-          {#each folderChildIds as childId (childId)}
-            <svelte:self
-              nodeId={childId}
-              depth={depth + 1}
-              {expandedIds}
-              {loadingIds}
-              {visibleIds}
-              {searchMatches}
-              {toggleSelection}
-              {toggleExpansion}
-              {getCheckboxState}
-            />
-          {/each}
-        {:else}
-          <li class="folder-node__status">No subfolders</li>
-        {/if}
+        {#each folderChildIds as childId (childId)}
+          <svelte:self
+            nodeId={childId}
+            depth={depth + 1}
+            {expandedIds}
+            {loadingIds}
+            {visibleIds}
+            {searchMatches}
+            {selectedIds}
+            {toggleSelection}
+            {toggleExpansion}
+            {getCheckboxState}
+          />
+        {/each}
       </ul>
     {/if}
   </li>
@@ -169,16 +173,6 @@
   .folder-node__children {
     margin: 0;
     padding: 0;
-  }
-
-  .folder-node__status {
-    list-style: none;
-    padding-inline-start: calc((var(--depth) + 1) * 16px + 1.75rem);
-    color: var(--tree-status, rgba(15, 23, 42, 0.6));
-    font-size: 0.875rem;
-    min-height: 1.75rem;
-    display: flex;
-    align-items: center;
   }
 
   .folder-node[data-match="true"] .folder-node__title {

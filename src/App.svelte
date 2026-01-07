@@ -11,6 +11,7 @@
   import {
     bookmarkCache,
     bootstrapBookmarkCache,
+    loadEntireFolderTree,
     ensureChildrenLoaded as ensureCacheChildrenLoaded,
     loadSubtree as loadCacheSubtree,
     getBookmarkCacheState,
@@ -1515,7 +1516,8 @@
     if (!nodeId) {
       return;
     }
-    await loadCacheSubtree(chromeApi, nodeId);
+    // With eager loading, all folders are already in the cache
+    // No need to load subtree anymore
     const descendants = getDescendantFolderIds(nodeId);
     if (!descendants.length) {
       return;
@@ -1554,7 +1556,7 @@
     }
   }
 
-  async function toggleFolderExpansion(nodeId) {
+  function toggleFolderExpansion(nodeId) {
     if (!nodeId) {
       return;
     }
@@ -1563,6 +1565,17 @@
     if (!node?.isFolder) {
       return;
     }
+    
+    // With eager loading, check if node actually has folder children
+    const hasFolderChildren = node.childrenIds?.some((childId) => {
+      const childNode = state.nodesById[childId];
+      return childNode?.isFolder;
+    }) ?? false;
+    
+    if (!hasFolderChildren) {
+      return; // Don't expand folders without subfolders
+    }
+    
     const usingDraft = folderModalOpen;
     const sourceSet =
       usingDraft && draftExpandedFolderIds
@@ -1583,34 +1596,13 @@
         }
       }
     };
+    
     if (next.has(nodeId)) {
       next.delete(nodeId);
-      const changed = !setsEqual(original, next);
-      commit(next, { persist: changed });
-      return;
+    } else {
+      next.add(nodeId);
     }
-
-    next.add(nodeId);
-    commit(next);
-    if (!node.childrenLoaded) {
-      setFolderLoading(nodeId, true);
-      try {
-        await ensureCacheChildrenLoaded(chromeApi, nodeId);
-      } catch (error) {
-        console.warn("Bookmark Dial: failed to load child folders", error);
-      } finally {
-        setFolderLoading(nodeId, false);
-      }
-    }
-    const latestState = getBookmarkCacheState();
-    const refreshedNode = latestState.nodesById[nodeId];
-    const hasFolderChildren = refreshedNode?.childrenIds?.some((childId) => {
-      const childNode = latestState.nodesById[childId];
-      return childNode?.isFolder;
-    });
-    if (!hasFolderChildren) {
-      next.delete(nodeId);
-    }
+    
     const changed = !setsEqual(original, next);
     commit(next, { persist: changed });
   }
@@ -1660,7 +1652,10 @@
     }
   }
 
-  function openFolderModal() {
+  async function openFolderModal() {
+    // Eagerly load the entire folder tree to avoid lazy loading issues
+    await loadEntireFolderTree(chromeApi);
+    
     draftSelectedFolderIds = new Set(selectedFolderIds);
     draftExpandedFolderIds = new Set(expandedFolderIds);
     draftBookmarkCounts = new Map(folderBookmarkCounts);
@@ -3508,6 +3503,7 @@ function createMockChrome() {
     visibleIds={visibleFolderIds}
     searchQuery={folderSearchQuery}
     searchMatches={folderSearchMatches}
+    selectedIds={folderModalOpen && draftSelectedFolderIds ? draftSelectedFolderIds : selectedFolderIds}
     summary={folderModalOpen ? draftFolderSummary : folderSummary}
     selectedFolderCount={folderModalOpen ? draftSelectedFolderIds?.size ?? 0 : selectedFolderIds.size}
     totalBookmarkCount={folderModalOpen ? draftCombinedBookmarkCount : combinedBookmarkCount}

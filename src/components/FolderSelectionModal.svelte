@@ -9,6 +9,7 @@
   export let visibleIds;
   export let searchQuery = "";
   export let searchMatches;
+  export let selectedIds;
   export let summary = [];
   export let selectedFolderCount = 0;
   export let totalBookmarkCount = 0;
@@ -93,6 +94,7 @@
                   {loadingIds}
                   {visibleIds}
                   {searchMatches}
+                  {selectedIds}
                   {toggleSelection}
                   {toggleExpansion}
                   {getCheckboxState}

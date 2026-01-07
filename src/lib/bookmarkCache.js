@@ -92,6 +92,68 @@ export async function bootstrapBookmarkCache(chromeApi) {
   return normalized.map((node) => node.id);
 }
 
+/**
+ * Eagerly load the entire folder tree into the cache.
+ * This eliminates lazy loading issues by ensuring all folder nodes
+ * are available with their children information.
+ */
+export async function loadEntireFolderTree(chromeApi) {
+  const tree = await chromeApi.bookmarks.getTree();
+  const root = Array.isArray(tree) ? tree[0] : null;
+  if (!root) {
+    return [];
+  }
+
+  const allNodes = [];
+  const rootIds = [];
+
+  // Recursively process the entire tree
+  function processNode(node, isRoot = false) {
+    const hasChildren = Array.isArray(node.children);
+    const children = hasChildren ? [...node.children] : [];
+    const sortedChildren = children.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    const folderChildren = sortedChildren.filter((child) => !child.url);
+    
+    const normalized = {
+      id: node.id,
+      parentId: node.parentId ?? null,
+      title: node.title ?? "",
+      url: node.url ?? null,
+      index: typeof node.index === "number" ? node.index : 0,
+      isFolder: !node.url,
+      childrenIds: sortedChildren.map((child) => child.id),
+      childrenLoaded: true, // Always true since we're loading everything
+      hasChildren: folderChildren.length > 0,
+    };
+
+    if (!node.url) {
+      allNodes.push(normalized);
+      if (isRoot) {
+        rootIds.push(node.id);
+      }
+    }
+
+    // Recursively process folder children
+    for (const child of folderChildren) {
+      processNode(child, false);
+    }
+  }
+
+  // Process top-level nodes (under the invisible root)
+  const topLevel = root.children ?? [];
+  for (const node of topLevel) {
+    processNode(node, true);
+  }
+
+  // Update the store with all nodes at once
+  cacheStore.set({
+    nodesById: Object.fromEntries(allNodes.map((node) => [node.id, node])),
+    rootIds: rootIds,
+  });
+
+  return rootIds;
+}
+
 export function getBookmarkCacheState() {
   return get(cacheStore);
 }
