@@ -543,13 +543,26 @@
 
     if (typeof window !== "undefined") {
       const keydownHandler = (event) => {
+        // Skip if user is typing in an input/textarea
+        const target = event.target;
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+          return;
+        }
+
         // Handle context menu close
         if (contextMenuVisible && event.key === "Escape") {
           closeContextMenu();
           event.stopPropagation();
           return;
         }
+
         if (event.key === "Escape") {
+          // Clear keyboard focus first
+          if (focusedBookmarkIndex >= 0) {
+            focusedBookmarkIndex = -1;
+            event.stopPropagation();
+            return;
+          }
           if (openMenuId !== null) {
             openMenuId = null;
             event.stopPropagation();
@@ -563,15 +576,19 @@
           if (settingsOpen) {
             closeSettings();
           }
+          return;
         }
+
         // Global keyboard shortcut for search
         if (event.key === "/" && settings.enableBookmarkSearch && !event.ctrlKey && !event.metaKey) {
-          const target = event.target;
-          if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-            return;
-          }
           event.preventDefault();
           bookmarkSearchVisible = true;
+          return;
+        }
+
+        // Grid navigation (only in merged view, not when overlays open)
+        if (settings.mergeAllBookmarks && !settingsOpen && !bookmarkSearchVisible && !showWelcome) {
+          handleGridNavigation(event);
         }
       };
       const pointerdownHandler = (event) => {
@@ -2092,31 +2109,57 @@
     loadTopSites();
   }
 
+  // Reactive bounds check for focusedBookmarkIndex (safety net after deletions/filtering)
+  $: {
+    const displayedCount = settings.mergeAllBookmarks
+      ? (settings.enableTopSites ? filteredBookmarks.length + topSites.length : filteredBookmarks.length)
+      : 0;
+    if (focusedBookmarkIndex >= displayedCount) {
+      focusedBookmarkIndex = Math.max(displayedCount - 1, -1);
+    }
+  }
+
   // Keyboard navigation functions
-  function handleGridKeydown(event) {
-    const displayedBookmarks = settings.mergeAllBookmarks
-      ? (settings.enableTopSites ? [...filteredBookmarks, ...topSites] : filteredBookmarks)
-      : [];
+  function handleGridNavigation(event) {
+    const displayedBookmarks = settings.enableTopSites
+      ? [...filteredBookmarks, ...topSites]
+      : filteredBookmarks;
+
     if (!displayedBookmarks.length) return;
 
     const columns = getGridColumns();
     const total = displayedBookmarks.length;
+    const isArrowKey = ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(event.key);
+
+    // Initialize focus on first arrow key press if not yet focused
+    if (isArrowKey && focusedBookmarkIndex < 0) {
+      event.preventDefault();
+      focusedBookmarkIndex = 0;
+      return;
+    }
 
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      focusedBookmarkIndex = Math.min(focusedBookmarkIndex + 1, total - 1);
-      if (focusedBookmarkIndex < 0) focusedBookmarkIndex = 0;
+      if (focusedBookmarkIndex + 1 < total) {
+        focusedBookmarkIndex = focusedBookmarkIndex + 1;
+      }
     } else if (event.key === "ArrowLeft") {
       event.preventDefault();
-      focusedBookmarkIndex = Math.max(focusedBookmarkIndex - 1, 0);
+      if (focusedBookmarkIndex - 1 >= 0) {
+        focusedBookmarkIndex = focusedBookmarkIndex - 1;
+      }
     } else if (event.key === "ArrowDown") {
       event.preventDefault();
       const newIndex = focusedBookmarkIndex + columns;
-      focusedBookmarkIndex = newIndex < total ? newIndex : focusedBookmarkIndex;
+      if (newIndex < total) {
+        focusedBookmarkIndex = newIndex;
+      }
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       const newIndex = focusedBookmarkIndex - columns;
-      focusedBookmarkIndex = newIndex >= 0 ? newIndex : focusedBookmarkIndex;
+      if (newIndex >= 0) {
+        focusedBookmarkIndex = newIndex;
+      }
     } else if (event.key === "Enter" && focusedBookmarkIndex >= 0) {
       event.preventDefault();
       const bookmark = displayedBookmarks[focusedBookmarkIndex];
@@ -2127,14 +2170,25 @@
       event.preventDefault();
       const bookmark = displayedBookmarks[focusedBookmarkIndex];
       if (bookmark && !bookmark.isTopSite) {
+        // Adjust focus after deletion
+        const newTotal = total - 1;
         removeBookmark(bookmark.id);
+        if (newTotal === 0) {
+          focusedBookmarkIndex = -1;
+        } else if (focusedBookmarkIndex >= newTotal) {
+          focusedBookmarkIndex = newTotal - 1;
+        }
       }
-    } else if (event.key === "/" && settings.enableBookmarkSearch) {
-      event.preventDefault();
-      bookmarkSearchVisible = true;
-    } else if (event.key === "Escape") {
-      focusedBookmarkIndex = -1;
-      closeContextMenu();
+    } else if (event.key >= "0" && event.key <= "9") {
+      // Number keys 1-9 open items 1-9, key 0 opens item 10
+      const index = event.key === "0" ? 9 : parseInt(event.key, 10) - 1;
+      if (index < total) {
+        event.preventDefault();
+        const bookmark = displayedBookmarks[index];
+        if (bookmark?.url) {
+          window.location.href = bookmark.url;
+        }
+      }
     }
   }
 
@@ -3393,15 +3447,12 @@ function createMockChrome() {
     </section>
 
     {#if settings.mergeAllBookmarks}
-      <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
-      <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
       <div
         id="dial-grid"
         class="grid"
         aria-label="Bookmark Dial links"
         bind:this={gridRef}
-        on:keydown={handleGridKeydown}
-        tabindex="0"
+        tabindex="-1"
         role="group"
       >
         {#each filteredBookmarks as bookmark, index (bookmark.id)}
