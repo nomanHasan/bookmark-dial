@@ -306,6 +306,15 @@ body.dark {
 .settings-drawer__header h2 {
   margin: 0;
   font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-drawer__brand-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
 }
 
 .settings-drawer__close {

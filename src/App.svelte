@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from "svelte";
   import FolderSelectionModal from "./components/FolderSelectionModal.svelte";
+  import AddShortcutModal from "./components/AddShortcutModal.svelte";
   import BookmarkTile from "./components/BookmarkTile.svelte";
   import ToastNotification from "./components/ToastNotification.svelte";
   import WelcomeModal from "./components/WelcomeModal.svelte";
@@ -41,7 +42,7 @@
     selectedIds: [],
     expandedIds: [],
   };
-  const MAX_BACKGROUND_BYTES = 4 * 1024 * 1024;
+  const MAX_BACKGROUND_BYTES = 10 * 1024 * 1024;
 
   const THEME_OPTIONS = [
     { id: "dark", label: "Dark" },
@@ -416,6 +417,7 @@
     compactFolderHeader: true,
     enableBookmarkSearch: false,
     enableTopSites: false,
+    lastShortcutFolderId: null,
   };
 
   const DEFAULT_SYNC_PREFERENCES = {
@@ -428,7 +430,7 @@
   const ACCENT_PREVIEW_COUNT = 10;
 
   const realChrome = typeof chrome !== "undefined" ? chrome : null;
-  const chromeApi = realChrome?.runtime?.sendMessage ? realChrome : createMockChrome();
+  const chromeApi = realChrome?.runtime?.id ? realChrome : createMockChrome();
   const isExtensionContext = Boolean(realChrome?.runtime?.id);
   const shouldPersistPreferences = Boolean(realChrome?.storage?.local) && isExtensionContext;
   const shouldSyncPreferences = Boolean(realChrome?.storage?.sync) && isExtensionContext;
@@ -444,6 +446,10 @@
   let loadingFolderIds = new Set();
   let hasHydratedSelection = false;
   let folderModalOpen = false;
+  let addShortcutModalOpen = false;
+  let addShortcutTargetFolderId = null;
+  let shortcutFolderOptions = [];
+  let defaultShortcutFolderId = null;
   let folderSearchQuery = "";
   let folderSearchMatches = new Set();
   let visibleFolderIds = null;
@@ -629,6 +635,7 @@
       compactFolderHeader: DEFAULT_SETTINGS.compactFolderHeader,
       enableBookmarkSearch: DEFAULT_SETTINGS.enableBookmarkSearch,
       enableTopSites: DEFAULT_SETTINGS.enableTopSites,
+      lastShortcutFolderId: DEFAULT_SETTINGS.lastShortcutFolderId,
     };
   }
 
@@ -709,6 +716,7 @@
       typeof stored.enableTopSites === "boolean"
         ? stored.enableTopSites
         : DEFAULT_SETTINGS.enableTopSites;
+    const lastShortcutFolderId = stored.lastShortcutFolderId ?? DEFAULT_SETTINGS.lastShortcutFolderId;
     const folderSelection = normalizeFolderSelection(stored.folderSelection);
     const selectionChanged =
       !arraysEqual(folderSelection.selectedIds, stored.folderSelection?.selectedIds ?? []) ||
@@ -723,7 +731,8 @@
       folderColumnWidth !== stored.folderColumnWidth ||
       compactFolderHeader !== stored.compactFolderHeader ||
       enableBookmarkSearch !== stored.enableBookmarkSearch ||
-      enableTopSites !== stored.enableTopSites;
+      enableTopSites !== stored.enableTopSites ||
+      lastShortcutFolderId !== stored.lastShortcutFolderId;
 
     return {
       settings: {
@@ -739,6 +748,7 @@
         compactFolderHeader,
         enableBookmarkSearch,
         enableTopSites,
+        lastShortcutFolderId,
       },
       folderSelection,
       changed: preferenceChanged || selectionChanged || (stored.version ?? STORAGE_VERSION) !== STORAGE_VERSION,
@@ -913,6 +923,7 @@
       compactFolderHeader: settings.compactFolderHeader,
       enableBookmarkSearch: settings.enableBookmarkSearch,
       enableTopSites: settings.enableTopSites,
+      lastShortcutFolderId: settings.lastShortcutFolderId,
       background: { ...settings.background },
       folderSelection: {
         selectedIds: Array.from(selectedFolderIds),
@@ -2198,23 +2209,20 @@
   }
 
   async function handleAddBookmark(targetFolderId = null) {
-    const folderId = await requestFolderForShortcut(targetFolderId);
-    if (!folderId) {
-      return;
-    }
-    const urlInput = prompt("Enter the URL for the new shortcut:");
-    if (!urlInput) {
-      return;
-    }
-    const normalizedUrl = normalizeUrl(urlInput.trim());
+    addShortcutTargetFolderId = targetFolderId;
+    addShortcutModalOpen = true;
+  }
+
+  async function handleAddShortcutConfirm(data) {
+    addShortcutModalOpen = false;
+    
+    const { folderId, url, title } = data;
+    const normalizedUrl = normalizeUrl(url);
+    
     if (!normalizedUrl) {
       alert("That does not appear to be a valid URL.");
       return;
     }
-
-    const defaultTitle = tryExtractHostname(normalizedUrl);
-    const titleInput = prompt("Enter a title for the shortcut:", defaultTitle);
-    const title = titleInput ? titleInput.trim() : defaultTitle;
 
     try {
       await chromeApi.bookmarks.create({
@@ -2222,10 +2230,19 @@
         title,
         url: normalizedUrl,
       });
+      
+      // Remember this folder for next time
+      settings = { ...settings, lastShortcutFolderId: folderId };
+      schedulePersistPreferences();
     } catch (error) {
       console.error("Bookmark Dial: failed to create bookmark", error);
       alert("Unable to add shortcut. Please try again.");
     }
+  }
+
+  function handleAddShortcutClose() {
+    addShortcutModalOpen = false;
+    addShortcutTargetFolderId = null;
   }
 
   function getShortcutFolderOptions() {
@@ -2252,6 +2269,35 @@
     return [];
   }
 
+  // Reactive: Update folder options when modal state or folders change
+  $: if (addShortcutModalOpen || folderSummary.length || selectedFolderIds.size) {
+    shortcutFolderOptions = getShortcutFolderOptions();
+    defaultShortcutFolderId = getDefaultShortcutFolderId();
+  }
+
+  function getDefaultShortcutFolderId() {
+    // If called from a specific folder (grouped view), use that
+    if (addShortcutTargetFolderId) {
+      return addShortcutTargetFolderId;
+    }
+    
+    const options = shortcutFolderOptions.length > 0 ? shortcutFolderOptions : getShortcutFolderOptions();
+    if (options.length === 0) {
+      return null;
+    }
+    
+    // Use last used folder if it exists in the current folder list
+    if (settings.lastShortcutFolderId) {
+      const folderExists = options.some(opt => opt.id === settings.lastShortcutFolderId);
+      if (folderExists) {
+        return settings.lastShortcutFolderId;
+      }
+    }
+    
+    // Otherwise, default to the last folder in the currently selected folders
+    return options[options.length - 1].id;
+  }
+
   function promptForFolderChoice(options) {
     const list = options
       .map((option, index) => `${index + 1}. ${option.fullPath || option.label || "Untitled folder"}`)
@@ -2268,21 +2314,6 @@
       return null;
     }
     return options[choice - 1].id;
-  }
-
-  async function requestFolderForShortcut(targetFolderId = null) {
-    if (targetFolderId) {
-      return targetFolderId;
-    }
-    const options = getShortcutFolderOptions();
-    if (!options.length) {
-      alert("No folders are available for new shortcuts right now.");
-      return null;
-    }
-    if (options.length === 1) {
-      return options[0].id;
-    }
-    return promptForFolderChoice(options);
   }
 
   async function editBookmark(bookmark) {
@@ -2336,10 +2367,10 @@
         {
           action: "removeBookmark",
           data: {
-            parentId: fullBookmark.parentId,
-            title: fullBookmark.title,
-            url: fullBookmark.url,
-            index: fullBookmark.index,
+            parentId: String(fullBookmark.parentId),
+            title: String(fullBookmark.title || ""),
+            url: String(fullBookmark.url || ""),
+            index: typeof fullBookmark.index === "number" ? fullBookmark.index : 0,
           },
         },
         8000
@@ -2365,7 +2396,7 @@
       return;
     }
     if (!isSupportedImage(file)) {
-      alert("Please choose a JPEG or PNG image under 4 MB.");
+      alert("Please choose a JPEG or PNG image under 10 MB.");
       return;
     }
     try {
@@ -3132,7 +3163,10 @@ function createMockChrome() {
     on:click|stopPropagation
   >
     <header class="settings-drawer__header">
-      <h2>Settings</h2>
+      <h2>
+        <img src="/icons/icon-48.png" alt="Bookmark Dial" class="settings-drawer__brand-icon" />
+        Settings
+      </h2>
       <button
         type="button"
         class="settings-drawer__close"
@@ -3516,6 +3550,14 @@ function createMockChrome() {
     onClearSelection={clearFolderSelection}
   />
 
+  <AddShortcutModal
+    open={addShortcutModalOpen}
+    folders={shortcutFolderOptions}
+    defaultFolderId={defaultShortcutFolderId}
+    onConfirm={handleAddShortcutConfirm}
+    onClose={handleAddShortcutClose}
+  />
+
   <WelcomeModal
     open={showWelcome}
     onDismiss={dismissWelcome}
@@ -3547,7 +3589,7 @@ function createMockChrome() {
     </header>
     <div class="dialog-body">
       <label class="file-picker">
-        <span>Choose an image (JPEG/PNG, up to 4&nbsp;MB)</span>
+        <span>Choose an image (JPEG/PNG, up to 10&nbsp;MB)</span>
         <input bind:this={backgroundInput} type="file" accept="image/png,image/jpeg,image/jpg" />
       </label>
       <p class="hint">The selected image is stored locally on this device only.</p>
