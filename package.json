@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite dev --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "clean": "rm -rf dist bookmark-dial-*.zip",
+    "clean:icons": "rm -f dist/icons/icon-64.png dist/icons/icon-192.png dist/icons/icon-256.png dist/icons/icon-512.png dist/icons/icon-1024.png",
+    "zip": "cd dist && zip -r ../bookmark-dial-v$npm_package_version.zip . -x '*.DS_Store' -x '__MACOSX/*'",
+    "package": "npm run clean && npm run build && npm run clean:icons && npm run zip"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.0",
