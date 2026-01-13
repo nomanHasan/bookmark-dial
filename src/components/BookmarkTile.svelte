@@ -22,20 +22,37 @@
   let label = "Shortcut";
   let faviconSrc = "";
   
+  // Track the last URL we fetched favicon for to avoid redundant fetches
+  let lastFetchedUrl = null;
+  
   $: label = bookmark?.displayTitle || bookmark?.title || bookmark?.url || "Shortcut";
   
-  // Fetch favicon asynchronously when bookmark URL changes
-  $: if (bookmark?.url && !bookmark.fallback) {
+  // Only fetch favicon when the actual URL changes, not on every bookmark object recreation
+  $: currentUrl = bookmark?.url;
+  $: isFallback = bookmark?.fallback;
+  
+  $: if (currentUrl && !isFallback && currentUrl !== lastFetchedUrl) {
+    lastFetchedUrl = currentUrl;
+    const urlToFetch = currentUrl;
     faviconSrc = "";
-    getFaviconUrl(bookmark.url).then((url) => {
-      if (url) {
-        faviconSrc = url;
-      } else {
-        handleImageError();
+    getFaviconUrl(urlToFetch).then((url) => {
+      // Only update if this is still the current URL (stale guard)
+      if (urlToFetch === lastFetchedUrl) {
+        if (url) {
+          faviconSrc = url;
+        } else {
+          handleImageError();
+        }
       }
     }).catch(() => {
-      handleImageError();
+      if (urlToFetch === lastFetchedUrl) {
+        handleImageError();
+      }
     });
+  } else if (isFallback) {
+    // Reset tracking when switching to fallback mode
+    lastFetchedUrl = null;
+    faviconSrc = "";
   }
 
   // Only regular bookmarks (not top sites) are draggable

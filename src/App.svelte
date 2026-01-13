@@ -43,6 +43,10 @@
     expandedIds: [],
   };
   const MAX_BACKGROUND_BYTES = 10 * 1024 * 1024;
+  const MAX_TOASTS = 5;
+  const INDEXEDDB_NAME = "BookmarkDialDB";
+  const INDEXEDDB_STORE = "backgrounds";
+  const INDEXEDDB_KEY = "customBackground";
 
   const THEME_OPTIONS = [
     { id: "dark", label: "Dark" },
@@ -504,11 +508,24 @@
   // Keyboard navigation
   let focusedBookmarkIndex = -1;
   let gridRef = null;
+  let cachedGridColumns = 4;
+  let resizeObserver = null;
 
   // Drag and drop
   let draggedBookmark = null;
   let dragOverBookmark = null;
   let dragSourceFolderId = null;
+
+  // AbortController for cancelling in-flight subtree loads
+  let subtreeLoadController = null;
+
+  // Memoization for folder summary
+  let lastSummarySelectionKey = "";
+  let lastSummaryCountsKey = "";
+  let cachedFolderSummary = [];
+
+  // Bookmark state optimization - keyed by id for stable references
+  let bookmarkById = new Map();
 
   let persistSettingsHandle = null;
   let mediaQuery = null;
@@ -633,6 +650,19 @@
     return () => {
       if (persistSettingsHandle) {
         clearTimeout(persistSettingsHandle);
+      }
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+      }
+      if (subtreeLoadController) {
+        subtreeLoadController.abort();
+        subtreeLoadController = null;
+      }
+      // Clean up background object URL
+      if (currentBackgroundObjectUrl) {
+        URL.revokeObjectURL(currentBackgroundObjectUrl);
+        currentBackgroundObjectUrl = null;
       }
       if (typeof document !== "undefined") {
         document.body.classList.remove("settings-open");
@@ -1182,6 +1212,11 @@
     });
   }
 
+  // Set up ResizeObserver when gridRef becomes available
+  $: if (gridRef && settings.mergeAllBookmarks) {
+    setupGridResizeObserver();
+  }
+
   $: effectiveExpandedFolderIds = (() => {
     const source = folderModalOpen && draftExpandedFolderIds ? draftExpandedFolderIds : expandedFolderIds;
     const base = new Set(source ?? []);
@@ -1356,20 +1391,43 @@
     }
   }
 
-  async function computeSelectionPreview(selectionSet) {
+  async function computeSelectionPreview(selectionSet, signal = null) {
     const working = selectionSet instanceof Set ? new Set(selectionSet) : new Set(selectionSet ?? []);
     if (!working.size) {
       return { items: [], counts: new Map(), total: 0, groups: [] };
     }
-    await Promise.all(Array.from(working).map((id) => loadCacheSubtree(chromeApi, id)));
+    
+    // Check if aborted before starting
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    
+    // Load subtrees - only load folders that aren't already fully loaded in cache
     const state = getBookmarkCacheState();
+    const foldersNeedingLoad = Array.from(working).filter((id) => {
+      const node = state.nodesById[id];
+      // Skip if folder is already loaded with children
+      return !node || !node.childrenLoaded;
+    });
+    
+    if (foldersNeedingLoad.length > 0) {
+      await Promise.all(foldersNeedingLoad.map((id) => loadCacheSubtree(chromeApi, id)));
+    }
+    
+    // Check if aborted after loading
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    
+    // Re-get state after potential loads
+    const freshState = getBookmarkCacheState();
     const seenUrls = new Map();
     const folderUrlSets = new Map();
     const aggregated = [];
     const folderGroups = [];
     working.forEach((folderId) => {
-      const allBookmarkNodes = gatherBookmarksForFolder(state, folderId, [], true);
-      const directBookmarkNodes = gatherBookmarksForFolder(state, folderId, [], false);
+      const allBookmarkNodes = gatherBookmarksForFolder(freshState, folderId, [], true);
+      const directBookmarkNodes = gatherBookmarksForFolder(freshState, folderId, [], false);
       const path = getFolderPath(folderId);
       const label = path[path.length - 1] || "Untitled folder";
       allBookmarkNodes.forEach((node) => {
@@ -1421,8 +1479,16 @@
       setStatus("Select folders to populate this page.", "info");
       return;
     }
+    
+    // Cancel any in-flight subtree loads
+    if (subtreeLoadController) {
+      subtreeLoadController.abort();
+    }
+    subtreeLoadController = new AbortController();
+    const signal = subtreeLoadController.signal;
+    
     try {
-      const preview = await computeSelectionPreview(selectedFolderIds);
+      const preview = await computeSelectionPreview(selectedFolderIds, signal);
       if (nonce !== refreshNonce) {
         return;
       }
@@ -1443,6 +1509,10 @@
         setStatus("", "info");
       }
     } catch (error) {
+      // Ignore abort errors - they're expected when a new refresh starts
+      if (error.name === "AbortError") {
+        return;
+      }
       console.error("Bookmark Dial: failed to load bookmarks", error);
       setStatus(STATUS_MESSAGES.error, "error");
     }
@@ -1479,9 +1549,41 @@
     };
   }
 
+  /**
+   * Optimized bookmark state update that preserves object references for unchanged bookmarks.
+   * This prevents unnecessary re-renders and favicon re-fetches.
+   */
   function updateBookmarkState(list) {
-    bookmarkIdSet = new Set(list.map((bookmark) => bookmark.id));
-    bookmarks = list.map((bookmark) => formatBookmarkForDisplay(bookmark));
+    const newIdSet = new Set(list.map((bookmark) => bookmark.id));
+    bookmarkIdSet = newIdSet;
+    
+    // Build new bookmarks array, reusing existing objects when possible
+    const newBookmarks = [];
+    const newBookmarkById = new Map();
+    
+    for (const rawBookmark of list) {
+      const id = rawBookmark.id;
+      const existing = bookmarkById.get(id);
+      
+      // Check if we can reuse the existing formatted bookmark
+      // Only reuse if title and url haven't changed (the key display properties)
+      if (existing && 
+          existing.title === rawBookmark.title && 
+          existing.url === rawBookmark.url &&
+          existing.index === rawBookmark.index) {
+        // Reuse the existing object to preserve referential equality
+        newBookmarks.push(existing);
+        newBookmarkById.set(id, existing);
+      } else {
+        // Format new bookmark
+        const formatted = formatBookmarkForDisplay(rawBookmark);
+        newBookmarks.push(formatted);
+        newBookmarkById.set(id, formatted);
+      }
+    }
+    
+    bookmarkById = newBookmarkById;
+    bookmarks = newBookmarks;
   }
 
   function setFolderLoading(folderId, isLoading) {
@@ -1730,8 +1832,28 @@
     return summaryItems;
   }
 
+  /**
+   * Memoized folder summary update - only rebuilds when selection or counts actually change.
+   */
   function updateFolderSummary() {
-    folderSummary = buildFolderSummary(selectedFolderIds, folderBookmarkCounts);
+    // Create cache keys from current state
+    const selectionKey = Array.from(selectedFolderIds).sort().join(",");
+    const countsKey = Array.from(folderBookmarkCounts.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, count]) => `${id}:${count}`)
+      .join(",");
+    
+    // Skip rebuild if nothing changed
+    if (selectionKey === lastSummarySelectionKey && countsKey === lastSummaryCountsKey) {
+      folderSummary = cachedFolderSummary;
+      return;
+    }
+    
+    // Rebuild and cache
+    lastSummarySelectionKey = selectionKey;
+    lastSummaryCountsKey = countsKey;
+    cachedFolderSummary = buildFolderSummary(selectedFolderIds, folderBookmarkCounts);
+    folderSummary = cachedFolderSummary;
   }
 
   function getFolderCheckboxState(nodeId) {
@@ -1856,24 +1978,15 @@
   }
 
   async function getFaviconUrl(url) {
-    // Use Chrome's native Favicon API and convert to data URI for <img> tag compatibility
+    // Use Chrome's native Favicon API directly - no base64 conversion needed
     try {
       const faviconUrl = new URL(chrome.runtime.getURL("/_favicon/"));
       faviconUrl.searchParams.set("pageUrl", url);
       faviconUrl.searchParams.set("size", FAVICON_SIZE.toString());
       
-      const response = await fetch(faviconUrl.toString());
-      if (!response.ok) {
-        return '';
-      }
-      
-      const blob = await response.blob();
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = () => resolve('');
-        reader.readAsDataURL(blob);
-      });
+      // Return the Chrome favicon URL directly instead of converting to base64
+      // This avoids massive memory allocation from data URLs
+      return faviconUrl.toString();
     } catch {
       return '';
     }
@@ -1923,7 +2036,14 @@
   function addToast(message, type = "info", undoData = null, duration = 5000) {
     const id = ++toastIdCounter;
     const toast = { id, message, type, undoData };
-    toasts = [...toasts, toast];
+    
+    // Limit to MAX_TOASTS - remove oldest if we exceed the limit
+    let newToasts = [...toasts, toast];
+    if (newToasts.length > MAX_TOASTS) {
+      newToasts = newToasts.slice(-MAX_TOASTS);
+    }
+    toasts = newToasts;
+    
     if (duration > 0) {
       setTimeout(() => dismissToast(id), duration);
     }
@@ -2192,11 +2312,48 @@
     }
   }
 
+  /**
+   * Recalculate and cache the grid column count.
+   * Called on resize events, not on every keyboard navigation.
+   */
+  function recalculateGridColumns() {
+    if (!gridRef) {
+      cachedGridColumns = 4;
+      return;
+    }
+    try {
+      const style = getComputedStyle(gridRef);
+      const columns = style.getPropertyValue("grid-template-columns");
+      cachedGridColumns = columns.split(" ").length || 4;
+    } catch {
+      cachedGridColumns = 4;
+    }
+  }
+
+  /**
+   * Get the cached grid column count. Use recalculateGridColumns() to update.
+   */
   function getGridColumns() {
-    if (!gridRef) return 4;
-    const style = getComputedStyle(gridRef);
-    const columns = style.getPropertyValue("grid-template-columns");
-    return columns.split(" ").length || 4;
+    return cachedGridColumns;
+  }
+
+  /**
+   * Set up ResizeObserver to recalculate grid columns on resize.
+   */
+  function setupGridResizeObserver() {
+    if (!gridRef || typeof ResizeObserver === "undefined") return;
+    
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+    }
+    
+    resizeObserver = new ResizeObserver(() => {
+      recalculateGridColumns();
+    });
+    
+    resizeObserver.observe(gridRef);
+    // Initial calculation
+    recalculateGridColumns();
   }
 
   function handleTileFocus(index) {
@@ -2442,6 +2599,9 @@
     backgroundDialog?.showModal();
   }
 
+  // Track current background object URL for cleanup
+  let currentBackgroundObjectUrl = null;
+
   async function handleBackgroundSubmit(event) {
     event.preventDefault();
     const file = backgroundInput?.files?.[0];
@@ -2454,11 +2614,16 @@
       return;
     }
     try {
-      const dataUrl = await fileToDataUrl(file, MAX_BACKGROUND_BYTES);
+      // Store as binary blob in IndexedDB (much more efficient than base64)
       if (shouldPersistPreferences) {
-        await chromeApi.storage.local.set({ [BACKGROUND_KEY]: dataUrl });
+        await saveBackgroundToIndexedDB(file);
+        // Also update the mode flag in chrome.storage for sync
+        await chromeApi.storage.local.set({ [BACKGROUND_KEY]: "indexeddb" });
       }
-      applyBackgroundImage(dataUrl);
+      
+      // Apply the background using object URL
+      applyBackgroundBlob(file);
+      
       settings = {
         ...settings,
         background: {
@@ -2476,12 +2641,13 @@
   async function clearBackground() {
     try {
       if (shouldPersistPreferences) {
+        await clearBackgroundFromIndexedDB();
         await chromeApi.storage.local.remove(BACKGROUND_KEY);
       }
     } catch (error) {
       console.error("Bookmark Dial: failed to clear background", error);
     }
-    applyBackgroundImage(null);
+    applyBackgroundBlob(null);
     settings = {
       ...settings,
       background: {
@@ -2498,7 +2664,7 @@
 
   async function loadBackground() {
     if (!shouldPersistPreferences) {
-      applyBackgroundImage(null);
+      applyBackgroundBlob(null);
       if (settings.background.mode === "custom") {
         settings = {
           ...settings,
@@ -2511,10 +2677,36 @@
       return;
     }
     try {
+      // Try to load from IndexedDB first (new efficient storage)
+      const blob = await loadBackgroundFromIndexedDB();
+      if (blob) {
+        applyBackgroundBlob(blob);
+        return;
+      }
+      
+      // Fall back to legacy chrome.storage for migration
       const stored = await chromeApi.storage.local.get(BACKGROUND_KEY);
-      const dataUrl = stored?.[BACKGROUND_KEY] || "";
-      applyBackgroundImage(dataUrl);
-      if (!dataUrl && settings.background.mode === "custom") {
+      const storedValue = stored?.[BACKGROUND_KEY] || "";
+      
+      // If it's a data URL (legacy), migrate to IndexedDB
+      if (storedValue && storedValue.startsWith("data:")) {
+        // Convert data URL to blob and migrate
+        try {
+          const response = await fetch(storedValue);
+          const blob = await response.blob();
+          await saveBackgroundToIndexedDB(blob);
+          // Update the storage key to indicate migration
+          await chromeApi.storage.local.set({ [BACKGROUND_KEY]: "indexeddb" });
+          applyBackgroundBlob(blob);
+        } catch (migrationError) {
+          console.warn("Bookmark Dial: background migration failed, using legacy", migrationError);
+          applyBackgroundImage(storedValue);
+        }
+        return;
+      }
+      
+      // No background found
+      if (!storedValue && settings.background.mode === "custom") {
         settings = {
           ...settings,
           background: {
@@ -2529,7 +2721,34 @@
     }
   }
 
+  /**
+   * Apply a background from a Blob using an efficient object URL.
+   * Automatically cleans up the previous object URL to prevent memory leaks.
+   */
+  function applyBackgroundBlob(blob) {
+    // Clean up previous object URL
+    if (currentBackgroundObjectUrl) {
+      URL.revokeObjectURL(currentBackgroundObjectUrl);
+      currentBackgroundObjectUrl = null;
+    }
+    
+    if (blob) {
+      currentBackgroundObjectUrl = blobToObjectUrl(blob);
+      backgroundUrl = currentBackgroundObjectUrl;
+    } else {
+      backgroundUrl = "";
+    }
+  }
+
+  /**
+   * Legacy function for data URL backgrounds (for migration support).
+   */
   function applyBackgroundImage(dataUrl) {
+    // Clean up previous object URL if switching from blob to data URL
+    if (currentBackgroundObjectUrl) {
+      URL.revokeObjectURL(currentBackgroundObjectUrl);
+      currentBackgroundObjectUrl = null;
+    }
     backgroundUrl = dataUrl || "";
   }
 
@@ -2636,6 +2855,81 @@
       reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
       reader.readAsDataURL(file);
     });
+  }
+
+  /**
+   * IndexedDB helpers for efficient binary storage of large background images.
+   * This avoids the memory overhead of base64 data URLs in chrome.storage.
+   */
+  function openBackgroundDB() {
+    return new Promise((resolve, reject) => {
+      if (typeof indexedDB === "undefined") {
+        reject(new Error("IndexedDB not available"));
+        return;
+      }
+      const request = indexedDB.open(INDEXEDDB_NAME, 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(INDEXEDDB_STORE)) {
+          db.createObjectStore(INDEXEDDB_STORE);
+        }
+      };
+    });
+  }
+
+  async function saveBackgroundToIndexedDB(blob) {
+    const db = await openBackgroundDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(INDEXEDDB_STORE, "readwrite");
+      const store = transaction.objectStore(INDEXEDDB_STORE);
+      const request = store.put(blob, INDEXEDDB_KEY);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+      transaction.oncomplete = () => db.close();
+    });
+  }
+
+  async function loadBackgroundFromIndexedDB() {
+    try {
+      const db = await openBackgroundDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(INDEXEDDB_STORE, "readonly");
+        const store = transaction.objectStore(INDEXEDDB_STORE);
+        const request = store.get(INDEXEDDB_KEY);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result || null);
+        transaction.oncomplete = () => db.close();
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async function clearBackgroundFromIndexedDB() {
+    try {
+      const db = await openBackgroundDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(INDEXEDDB_STORE, "readwrite");
+        const store = transaction.objectStore(INDEXEDDB_STORE);
+        const request = store.delete(INDEXEDDB_KEY);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve();
+        transaction.oncomplete = () => db.close();
+      });
+    } catch {
+      // Ignore errors on clear
+    }
+  }
+
+  /**
+   * Convert a Blob to an object URL for efficient display.
+   * Object URLs are much more memory-efficient than data URLs.
+   */
+  function blobToObjectUrl(blob) {
+    if (!blob) return "";
+    return URL.createObjectURL(blob);
   }
 
 
