@@ -1390,3 +1390,79 @@ body.dark #clear-background:focus-visible {
     cursor: pointer;
   }
 }
+
+/* Skeleton Loading UI */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-grid {
+  margin: auto 0;
+}
+
+.skeleton-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(128px, 100%);
+}
+
+.skeleton-icon {
+  width: var(--dial-icon-size);
+  height: var(--dial-icon-size);
+  border-radius: 50%;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.15) 0%,
+    rgba(148, 163, 184, 0.35) 50%,
+    rgba(148, 163, 184, 0.15) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-title {
+  width: 70%;
+  height: 0.9rem;
+  border-radius: 0.25rem;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.12) 0%,
+    rgba(148, 163, 184, 0.28) 50%,
+    rgba(148, 163, 184, 0.12) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  animation-delay: 0.1s;
+}
+
+body.dark {
+  .skeleton-icon {
+    background: linear-gradient(
+      90deg,
+      rgba(71, 85, 105, 0.25) 0%,
+      rgba(100, 116, 139, 0.5) 50%,
+      rgba(71, 85, 105, 0.25) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  .skeleton-title {
+    background: linear-gradient(
+      90deg,
+      rgba(71, 85, 105, 0.2) 0%,
+      rgba(100, 116, 139, 0.4) 50%,
+      rgba(71, 85, 105, 0.2) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+    animation-delay: 0.1s;
+  }
+}

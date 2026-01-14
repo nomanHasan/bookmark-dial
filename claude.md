@@ -1,0 +1,1 @@
+Always run `npm run build` to compile the latest changes after making edits to the source files.

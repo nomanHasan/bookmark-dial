@@ -7,8 +7,10 @@
   import WelcomeModal from "./components/WelcomeModal.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
   import SearchBar from "./components/SearchBar.svelte";
-  import { developerTools } from './data/mock.js';
-  import { literatureLinks } from './data/literature.js';
+  import SettingsDrawer from "./components/SettingsDrawer.svelte";
+  import BookmarkGrid from "./components/BookmarkGrid.svelte";
+  import FolderGroupList from "./components/FolderGroupList.svelte";
+  import BackgroundPickerDialog from "./components/BackgroundPickerDialog.svelte";
   import {
     bookmarkCache,
     bootstrapBookmarkCache,
@@ -25,413 +27,44 @@
     applyRemovedNode,
     buildSearchIndex,
   } from "./lib/bookmarkCache";
-
-  const STATUS_MESSAGES = {
-    loading: "Loading Bookmark Dial…",
-    empty: "No bookmarks yet. Add shortcuts from this page or the bookmark manager.",
-    error: "Bookmark Dial folder is unavailable. Try reopening the tab or reinstalling the extension.",
-  };
-
-  const FAVICON_SIZE = 64;
-  const BACKGROUND_KEY = "customBackgroundImage";
-  const SETTINGS_KEY = "uiPreferences";
-  const SYNC_SETTINGS_KEY = "dialPreferences";
-  const STORAGE_VERSION = 2;
-  const WELCOME_KEY = "hasSeenWelcome";
-  const DEFAULT_FOLDER_SELECTION = {
-    selectedIds: [],
-    expandedIds: [],
-  };
-  const MAX_BACKGROUND_BYTES = 10 * 1024 * 1024;
-  const MAX_TOASTS = 5;
-  const INDEXEDDB_NAME = "BookmarkDialDB";
-  const INDEXEDDB_STORE = "backgrounds";
-  const INDEXEDDB_KEY = "customBackground";
-
-  const THEME_OPTIONS = [
-    { id: "dark", label: "Dark" },
-    { id: "light", label: "Light" },
-    { id: "system", label: "System" },
-  ];
-
-  const ACCENT_OPTIONS = [
-    {
-      id: "cobalt",
-      label: "Cobalt",
-      colors: {
-        base: "#2563eb",
-        contrast: "#f8fafc",
-        soft: "rgba(37, 99, 235, 0.14)",
-        border: "rgba(37, 99, 235, 0.45)",
-      },
-    },
-    {
-      id: "violet",
-      label: "Violet",
-      colors: {
-        base: "#8b5cf6",
-        contrast: "#faf5ff",
-        soft: "rgba(139, 92, 246, 0.16)",
-        border: "rgba(139, 92, 246, 0.45)",
-      },
-    },
-    {
-      id: "emerald",
-      label: "Emerald",
-      colors: {
-        base: "#059669",
-        contrast: "#ecfdf5",
-        soft: "rgba(5, 150, 105, 0.14)",
-        border: "rgba(5, 150, 105, 0.45)",
-      },
-    },
-    {
-      id: "amber",
-      label: "Amber",
-      colors: {
-        base: "#d97706",
-        contrast: "#fffbeb",
-        soft: "rgba(217, 119, 6, 0.18)",
-        border: "rgba(217, 119, 6, 0.5)",
-      },
-    },
-    {
-      id: "rose",
-      label: "Rose",
-      colors: {
-        base: "#e11d48",
-        contrast: "#fff1f2",
-        soft: "rgba(225, 29, 72, 0.16)",
-        border: "rgba(225, 29, 72, 0.45)",
-      },
-    },
-    {
-      id: "slate",
-      label: "Slate",
-      colors: {
-        base: "#475569",
-        contrast: "#f8fafc",
-        soft: "rgba(71, 85, 105, 0.18)",
-        border: "rgba(71, 85, 105, 0.5)",
-      },
-    },
-    {
-      id: "sky",
-      label: "Sky",
-      colors: {
-        base: "#0284c7",
-        contrast: "#e0f2fe",
-        soft: "rgba(2, 132, 199, 0.16)",
-        border: "rgba(2, 132, 199, 0.45)",
-      },
-    },
-    {
-      id: "blush",
-      label: "Blush",
-      colors: {
-        base: "#ec4899",
-        contrast: "#fff0f6",
-        soft: "rgba(236, 72, 153, 0.18)",
-        border: "rgba(236, 72, 153, 0.5)",
-      },
-    },
-    {
-      id: "moss",
-      label: "Moss",
-      colors: {
-        base: "#4d7c0f",
-        contrast: "#ecfccb",
-        soft: "rgba(77, 124, 15, 0.18)",
-        border: "rgba(77, 124, 15, 0.5)",
-      },
-    },
-    {
-      id: "bronze",
-      label: "Bronze",
-      colors: {
-        base: "#b45309",
-        contrast: "#fff7ed",
-        soft: "rgba(180, 83, 9, 0.2)",
-        border: "rgba(180, 83, 9, 0.55)",
-      },
-    },
-    {
-      id: "orchid",
-      label: "Orchid",
-      colors: {
-        base: "#c026d3",
-        contrast: "#fdf4ff",
-        soft: "rgba(192, 38, 211, 0.18)",
-        border: "rgba(192, 38, 211, 0.5)",
-      },
-    },
-    {
-      id: "mint",
-      label: "Mint",
-      colors: {
-        base: "#14b8a6",
-        contrast: "#e0fefa",
-        soft: "rgba(20, 184, 166, 0.16)",
-        border: "rgba(20, 184, 166, 0.46)",
-      },
-    },
-    {
-      id: "graphite",
-      label: "Graphite",
-      colors: {
-        base: "#1f2937",
-        contrast: "#f8fafc",
-        soft: "rgba(31, 41, 55, 0.22)",
-        border: "rgba(31, 41, 55, 0.6)",
-      },
-    },
-    {
-      id: "sunset",
-      label: "Sunset",
-      colors: {
-        base: "#ea580c",
-        contrast: "#fff7ed",
-        soft: "rgba(234, 88, 12, 0.18)",
-        border: "rgba(234, 88, 12, 0.52)",
-      },
-    },
-    {
-      id: "glacier",
-      label: "Glacier",
-      colors: {
-        base: "#0ea5e9",
-        contrast: "#f0f9ff",
-        soft: "rgba(14, 165, 233, 0.16)",
-        border: "rgba(14, 165, 233, 0.45)",
-      },
-    },
-    {
-      id: "amethyst",
-      label: "Amethyst",
-      colors: {
-        base: "#6d28d9",
-        contrast: "#f5f3ff",
-        soft: "rgba(109, 40, 217, 0.18)",
-        border: "rgba(109, 40, 217, 0.5)",
-      },
-    },
-    {
-      id: "sand",
-      label: "Sand",
-      colors: {
-        base: "#ca8a04",
-        contrast: "#fffbeb",
-        soft: "rgba(202, 138, 4, 0.2)",
-        border: "rgba(202, 138, 4, 0.5)",
-      },
-    },
-    {
-      id: "cranberry",
-      label: "Cranberry",
-      colors: {
-        base: "#be123c",
-        contrast: "#fff1f5",
-        soft: "rgba(190, 18, 60, 0.18)",
-        border: "rgba(190, 18, 60, 0.5)",
-      },
-    },
-  ];
-
-  const GRADIENT_OPTIONS = [
-    {
-      id: "aurora",
-      label: "Aurora",
-      gradients: {
-        light: "linear-gradient(135deg, #d8b4fe 0%, #6366f1 50%, #22d3ee 100%)",
-        dark: "linear-gradient(135deg, #312e81 0%, #1e3a8a 50%, #0f172a 100%)",
-      },
-      accent: "violet",
-    },
-    {
-      id: "sunrise",
-      label: "Sunrise",
-      gradients: {
-        light: "linear-gradient(135deg, #fef3c7 0%, #fdba74 50%, #f97316 100%)",
-        dark: "linear-gradient(135deg, #7c2d12 0%, #c2410c 45%, #ea580c 100%)",
-      },
-      accent: "amber",
-    },
-    {
-      id: "forest",
-      label: "Forest",
-      gradients: {
-        light: "linear-gradient(135deg, #bbf7d0 0%, #34d399 50%, #0f766e 100%)",
-        dark: "linear-gradient(135deg, #064e3b 0%, #059669 50%, #0f172a 100%)",
-      },
-      accent: "emerald",
-    },
-    {
-      id: "ocean",
-      label: "Ocean",
-      gradients: {
-        light: "linear-gradient(135deg, #bae6fd 0%, #38bdf8 50%, #0ea5e9 100%)",
-        dark: "linear-gradient(135deg, #0c4a6e 0%, #0369a1 50%, #082f49 100%)",
-      },
-      accent: "sky",
-    },
-    {
-      id: "twilight",
-      label: "Twilight",
-      gradients: {
-        light: "linear-gradient(135deg, #fecdd3 0%, #fda4af 50%, #fb7185 100%)",
-        dark: "linear-gradient(135deg, #7f1d1d 0%, #be123c 50%, #9f1239 100%)",
-      },
-      accent: "orchid",
-    },
-    {
-      id: "slate",
-      label: "Slate",
-      gradients: {
-        light: "linear-gradient(135deg, #e2e8f0 0%, #cbd5f5 50%, #94a3b8 100%)",
-        dark: "linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #020617 100%)",
-      },
-      accent: "slate",
-    },
-    {
-      id: "blossom",
-      label: "Blossom",
-      gradients: {
-        light: "linear-gradient(135deg, #ffe4e6 0%, #fbcfe8 45%, #f472b6 100%)",
-        dark: "linear-gradient(135deg, #831843 0%, #9d174d 50%, #701a75 100%)",
-      },
-      accent: "blush",
-    },
-    {
-      id: "lagoon",
-      label: "Lagoon",
-      gradients: {
-        light: "linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 40%, #5eead4 100%)",
-        dark: "linear-gradient(135deg, #022c22 0%, #0d9488 45%, #14b8a6 100%)",
-      },
-      accent: "mint",
-    },
-    {
-      id: "ember",
-      label: "Ember",
-      gradients: {
-        light: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 40%, #fb7185 100%)",
-        dark: "linear-gradient(135deg, #450a0a 0%, #9f1239 50%, #be123c 100%)",
-      },
-      accent: "rose",
-    },
-    {
-      id: "lilac",
-      label: "Lilac",
-      gradients: {
-        light: "linear-gradient(135deg, #f5f3ff 0%, #ede9fe 45%, #d8b4fe 100%)",
-        dark: "linear-gradient(135deg, #312e81 0%, #5b21b6 50%, #7c3aed 100%)",
-      },
-      accent: "violet",
-    },
-    {
-      id: "zenith",
-      label: "Zenith",
-      gradients: {
-        light: "linear-gradient(135deg, #e0f2fe 0%, #dbeafe 45%, #818cf8 100%)",
-        dark: "linear-gradient(135deg, #1e293b 0%, #1f3b8a 45%, #3730a3 100%)",
-      },
-      accent: "cobalt",
-    },
-    {
-      id: "sage",
-      label: "Sage",
-      gradients: {
-        light: "linear-gradient(135deg, #ecfccb 0%, #bbf7d0 45%, #84cc16 100%)",
-        dark: "linear-gradient(135deg, #052e16 0%, #166534 45%, #15803d 100%)",
-      },
-      accent: "moss",
-    },
-    {
-      id: "velvet",
-      label: "Velvet",
-      gradients: {
-        light: "linear-gradient(135deg, #fdf4ff 0%, #f5d0fe 45%, #f0abfc 100%)",
-        dark: "linear-gradient(135deg, #4a044e 0%, #6b21a8 45%, #86198f 100%)",
-      },
-      accent: "orchid",
-    },
-    {
-      id: "citrus",
-      label: "Citrus",
-      gradients: {
-        light: "linear-gradient(135deg, #fefce8 0%, #fef08a 45%, #facc15 100%)",
-        dark: "linear-gradient(135deg, #422006 0%, #854d0e 50%, #b45309 100%)",
-      },
-      accent: "amber",
-    },
-    {
-      id: "glacier",
-      label: "Glacier",
-      gradients: {
-        light: "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 45%, #bae6fd 100%)",
-        dark: "linear-gradient(135deg, #082f49 0%, #0c4a6e 45%, #0284c7 100%)",
-      },
-      accent: "sky",
-    },
-    {
-      id: "terracotta",
-      label: "Terracotta",
-      gradients: {
-        light: "linear-gradient(135deg, #fff7ed 0%, #fed7aa 45%, #f97316 100%)",
-        dark: "linear-gradient(135deg, #431407 0%, #7c2d12 45%, #9a3412 100%)",
-      },
-      accent: "bronze",
-    },
-    {
-      id: "nocturne",
-      label: "Nocturne",
-      gradients: {
-        light: "linear-gradient(135deg, #ede9fe 0%, #c7d2fe 45%, #4338ca 100%)",
-        dark: "linear-gradient(135deg, #020617 0%, #111827 45%, #312e81 100%)",
-      },
-      accent: "slate",
-    },
-    {
-      id: "horizon",
-      label: "Horizon",
-      gradients: {
-        light: "linear-gradient(135deg, #fef3c7 0%, #fdba74 40%, #60a5fa 100%)",
-        dark: "linear-gradient(135deg, #451a03 0%, #9a3412 45%, #1d4ed8 100%)",
-      },
-      accent: "cobalt",
-    },
-  ];
-
-  const DEFAULT_GRADIENT = GRADIENT_OPTIONS[0];
-  const DEFAULT_ACCENT_ID =
-    DEFAULT_GRADIENT?.accent && ACCENT_OPTIONS.some((option) => option.id === DEFAULT_GRADIENT.accent)
-      ? DEFAULT_GRADIENT.accent
-      : ACCENT_OPTIONS[0].id;
-
-  const DEFAULT_SETTINGS = {
-    theme: "system",
-    accent: DEFAULT_ACCENT_ID,
-    background: {
-      mode: "gradient",
-      gradientId: DEFAULT_GRADIENT?.id ?? GRADIENT_OPTIONS[0].id,
-    },
-    titleBackdrop: false,
-    mergeAllBookmarks: true,
-    folderColumnWidth: 1170,
-    compactFolderHeader: true,
-    enableBookmarkSearch: false,
-    enableTopSites: false,
-    lastShortcutFolderId: null,
-  };
-
-  const DEFAULT_SYNC_PREFERENCES = {
-    ...DEFAULT_SETTINGS,
-    folderSelection: { ...DEFAULT_FOLDER_SELECTION },
-    version: STORAGE_VERSION,
-  };
-
-  const GRADIENT_PREVIEW_COUNT = 6;
-  const ACCENT_PREVIEW_COUNT = 10;
+  import {
+    STATUS_MESSAGES,
+    FAVICON_SIZE,
+    BACKGROUND_KEY,
+    SETTINGS_KEY,
+    SYNC_SETTINGS_KEY,
+    STORAGE_VERSION,
+    WELCOME_KEY,
+    DEFAULT_FOLDER_SELECTION,
+    MAX_BACKGROUND_BYTES,
+    MAX_TOASTS,
+    INDEXEDDB_NAME,
+    INDEXEDDB_STORE,
+    INDEXEDDB_KEY,
+    THEME_OPTIONS,
+    ACCENT_OPTIONS,
+    GRADIENT_OPTIONS,
+    DEFAULT_GRADIENT,
+    DEFAULT_ACCENT_ID,
+    DEFAULT_SETTINGS,
+    DEFAULT_SYNC_PREFERENCES,
+    GRADIENT_PREVIEW_COUNT,
+    ACCENT_PREVIEW_COUNT,
+  } from "./lib/constants.js";
+  import {
+    normalizeUrl,
+    tryExtractHostname,
+    deriveInitials,
+    debounce,
+    generateDialPalette,
+    positiveModulo,
+    isSupportedImage,
+    fileToDataUrl,
+    arraysEqual,
+    setsEqual,
+    blobToObjectUrl,
+  } from "./lib/utils.js";
+  import { createMockChrome } from "./lib/mockChrome.js";
 
   const realChrome = typeof chrome !== "undefined" ? chrome : null;
   const chromeApi = realChrome?.runtime?.id ? realChrome : createMockChrome();
@@ -439,8 +72,9 @@
   const shouldPersistPreferences = Boolean(realChrome?.storage?.local) && isExtensionContext;
   const shouldSyncPreferences = Boolean(realChrome?.storage?.sync) && isExtensionContext;
 
-  let statusMessage = STATUS_MESSAGES.loading;
+  let statusMessage = "";
   let statusTone = "info";
+  let isLoading = true;
   let bookmarks = [];
   let folderBookmarkGroups = [];
   let bookmarkIdSet = new Set();
@@ -471,10 +105,8 @@
   let draftPreviewNonce = 0;
   let openMenuId = null;
   let backgroundUrl = "";
-  let backgroundDialog;
-  let backgroundInput;
+  let backgroundDialogRef;
   let settingsButton;
-  let settingsDrawer;
   let settings = createDefaultSettings();
   let settingsOpen = false;
   let loadingSettings = true;
@@ -531,6 +163,8 @@
   let mediaQuery = null;
   let removeSystemThemeListener = null;
 
+  // Track current background object URL for cleanup
+  let currentBackgroundObjectUrl = null;
 
   const cleanupFns = [];
 
@@ -707,13 +341,6 @@
       : DEFAULT_SETTINGS.background.gradientId;
   }
 
-  function arraysEqual(a = [], b = []) {
-    if (a.length !== b.length) {
-      return false;
-    }
-    return a.every((value, index) => value === b[index]);
-  }
-
   function normalizeFolderSelection(selection = {}) {
     const selected = Array.isArray(selection.selectedIds) ? selection.selectedIds.filter(Boolean) : [];
     const expanded = Array.isArray(selection.expandedIds) ? selection.expandedIds.filter(Boolean) : [];
@@ -721,18 +348,6 @@
       selectedIds: Array.from(new Set(selected)),
       expandedIds: Array.from(new Set(expanded)),
     };
-  }
-
-  function setsEqual(a, b) {
-    if (a.size !== b.size) {
-      return false;
-    }
-    for (const value of a) {
-      if (!b.has(value)) {
-        return false;
-      }
-    }
-    return true;
   }
 
   function mergeStoredPreferences(stored = {}) {
@@ -997,12 +612,7 @@
       return;
     }
     settingsOpen = false;
-    if (typeof document !== "undefined" && settingsDrawer) {
-      const activeElement = document.activeElement;
-      if (activeElement && settingsDrawer.contains(activeElement)) {
-        settingsButton?.focus();
-      }
-    }
+    settingsButton?.focus();
   }
 
   function toggleSettings() {
@@ -1133,7 +743,7 @@
   async function showCustomBackgroundPicker() {
     closeSettings();
     await tick();
-    openBackgroundDialog();
+    backgroundDialogRef?.open();
   }
 
   async function loadSettings() {
@@ -1204,12 +814,6 @@
 
   $: if (typeof document !== "undefined") {
     document.body.classList.toggle("settings-open", settingsOpen);
-  }
-
-  $: if (settingsOpen) {
-    tick().then(() => {
-      settingsDrawer?.focus();
-    });
   }
 
   // Set up ResizeObserver when gridRef becomes available
@@ -1396,29 +1000,34 @@
     if (!working.size) {
       return { items: [], counts: new Map(), total: 0, groups: [] };
     }
-    
+
     // Check if aborted before starting
     if (signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
     }
-    
-    // Load subtrees - only load folders that aren't already fully loaded in cache
+
+    // Load subtrees - check if folders have their bookmark children loaded (not just folder structure)
     const state = getBookmarkCacheState();
     const foldersNeedingLoad = Array.from(working).filter((id) => {
       const node = state.nodesById[id];
-      // Skip if folder is already loaded with children
-      return !node || !node.childrenLoaded;
+      if (!node) return true;
+      if (!node.childrenLoaded) return true;
+      // Check if any child is missing from cache (bookmarks weren't loaded, only folder tree was)
+      const hasUnloadedChildren = (node.childrenIds ?? []).some(
+        (childId) => !state.nodesById[childId]
+      );
+      return hasUnloadedChildren;
     });
-    
+
     if (foldersNeedingLoad.length > 0) {
       await Promise.all(foldersNeedingLoad.map((id) => loadCacheSubtree(chromeApi, id)));
     }
-    
+
     // Check if aborted after loading
     if (signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
     }
-    
+
     // Re-get state after potential loads
     const freshState = getBookmarkCacheState();
     const seenUrls = new Map();
@@ -1433,6 +1042,10 @@
       allBookmarkNodes.forEach((node) => {
         const normalized = normalizeUrl(node.url) || node.url;
         const key = (normalized || node.url || node.id).toLowerCase();
+        // Track all bookmarks (recursive) for count in folder summary
+        const folderSet = folderUrlSets.get(folderId) ?? new Set();
+        folderSet.add(key);
+        folderUrlSets.set(folderId, folderSet);
         if (!seenUrls.has(key)) {
           seenUrls.set(key, node.id);
           aggregated.push({
@@ -1445,9 +1058,6 @@
       const folderItems = directBookmarkNodes.map((node) => {
         const normalized = normalizeUrl(node.url) || node.url;
         const key = (normalized || node.url || node.id).toLowerCase();
-        const folderSet = folderUrlSets.get(folderId) ?? new Set();
-        folderSet.add(key);
-        folderUrlSets.set(folderId, folderSet);
         return {
           ...node,
           sourceFolderId: folderId,
@@ -1476,17 +1086,18 @@
       folderBookmarkCounts = new Map();
       combinedBookmarkCount = 0;
       updateFolderSummary();
+      isLoading = false;
       setStatus("Select folders to populate this page.", "info");
       return;
     }
-    
+
     // Cancel any in-flight subtree loads
     if (subtreeLoadController) {
       subtreeLoadController.abort();
     }
     subtreeLoadController = new AbortController();
     const signal = subtreeLoadController.signal;
-    
+
     try {
       const preview = await computeSelectionPreview(selectedFolderIds, signal);
       if (nonce !== refreshNonce) {
@@ -1503,6 +1114,7 @@
         items: group.items.map((item) => formatBookmarkForDisplay(item)),
       }));
       updateFolderSummary();
+      isLoading = false;
       if (preview.items.length === 0) {
         setStatus(STATUS_MESSAGES.empty);
       } else {
@@ -1556,19 +1168,19 @@
   function updateBookmarkState(list) {
     const newIdSet = new Set(list.map((bookmark) => bookmark.id));
     bookmarkIdSet = newIdSet;
-    
+
     // Build new bookmarks array, reusing existing objects when possible
     const newBookmarks = [];
     const newBookmarkById = new Map();
-    
+
     for (const rawBookmark of list) {
       const id = rawBookmark.id;
       const existing = bookmarkById.get(id);
-      
+
       // Check if we can reuse the existing formatted bookmark
       // Only reuse if title and url haven't changed (the key display properties)
-      if (existing && 
-          existing.title === rawBookmark.title && 
+      if (existing &&
+          existing.title === rawBookmark.title &&
           existing.url === rawBookmark.url &&
           existing.index === rawBookmark.index) {
         // Reuse the existing object to preserve referential equality
@@ -1581,7 +1193,7 @@
         newBookmarkById.set(id, formatted);
       }
     }
-    
+
     bookmarkById = newBookmarkById;
     bookmarks = newBookmarks;
   }
@@ -1695,17 +1307,17 @@
     if (!node?.isFolder) {
       return;
     }
-    
+
     // With eager loading, check if node actually has folder children
     const hasFolderChildren = node.childrenIds?.some((childId) => {
       const childNode = state.nodesById[childId];
       return childNode?.isFolder;
     }) ?? false;
-    
+
     if (!hasFolderChildren) {
       return; // Don't expand folders without subfolders
     }
-    
+
     const usingDraft = folderModalOpen;
     const sourceSet =
       usingDraft && draftExpandedFolderIds
@@ -1726,13 +1338,13 @@
         }
       }
     };
-    
+
     if (next.has(nodeId)) {
       next.delete(nodeId);
     } else {
       next.add(nodeId);
     }
-    
+
     const changed = !setsEqual(original, next);
     commit(next, { persist: changed });
   }
@@ -1785,7 +1397,7 @@
   async function openFolderModal() {
     // Eagerly load the entire folder tree to avoid lazy loading issues
     await loadEntireFolderTree(chromeApi);
-    
+
     draftSelectedFolderIds = new Set(selectedFolderIds);
     draftExpandedFolderIds = new Set(expandedFolderIds);
     draftBookmarkCounts = new Map(folderBookmarkCounts);
@@ -1816,7 +1428,6 @@
   }
 
   function buildFolderSummary(selectionSet, countsMap) {
-    const state = getBookmarkCacheState();
     const summaryItems = Array.from(selectionSet ?? []).map((id) => {
       const path = getFolderPath(id);
       const label = path[path.length - 1] || "Untitled folder";
@@ -1842,13 +1453,13 @@
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([id, count]) => `${id}:${count}`)
       .join(",");
-    
+
     // Skip rebuild if nothing changed
     if (selectionKey === lastSummarySelectionKey && countsKey === lastSummaryCountsKey) {
       folderSummary = cachedFolderSummary;
       return;
     }
-    
+
     // Rebuild and cache
     lastSummarySelectionKey = selectionKey;
     lastSummaryCountsKey = countsKey;
@@ -1914,19 +1525,19 @@
     const matchIds = matches.map((item) => item.id);
     folderSearchMatches = new Set(matchIds);
     const visible = new Set();
-    const state = getBookmarkCacheState();
+    const stateLocal = getBookmarkCacheState();
     matchIds.forEach((id) => {
-      let current = state.nodesById[id];
+      let current = stateLocal.nodesById[id];
       while (current) {
         visible.add(current.id);
         if (!current.parentId) {
           break;
         }
-        current = state.nodesById[current.parentId];
+        current = stateLocal.nodesById[current.parentId];
       }
-      const node = state.nodesById[id];
+      const node = stateLocal.nodesById[id];
       node?.childrenIds?.forEach((childId) => {
-        const childNode = state.nodesById[childId];
+        const childNode = stateLocal.nodesById[childId];
         if (childNode?.isFolder) {
           visible.add(childId);
         }
@@ -1983,7 +1594,7 @@
       const faviconUrl = new URL(chrome.runtime.getURL("/_favicon/"));
       faviconUrl.searchParams.set("pageUrl", url);
       faviconUrl.searchParams.set("size", FAVICON_SIZE.toString());
-      
+
       // Return the Chrome favicon URL directly instead of converting to base64
       // This avoids massive memory allocation from data URLs
       return faviconUrl.toString();
@@ -2036,14 +1647,14 @@
   function addToast(message, type = "info", undoData = null, duration = 5000) {
     const id = ++toastIdCounter;
     const toast = { id, message, type, undoData };
-    
+
     // Limit to MAX_TOASTS - remove oldest if we exceed the limit
     let newToasts = [...toasts, toast];
     if (newToasts.length > MAX_TOASTS) {
       newToasts = newToasts.slice(-MAX_TOASTS);
     }
     toasts = newToasts;
-    
+
     if (duration > 0) {
       setTimeout(() => dismissToast(id), duration);
     }
@@ -2342,15 +1953,15 @@
    */
   function setupGridResizeObserver() {
     if (!gridRef || typeof ResizeObserver === "undefined") return;
-    
+
     if (resizeObserver) {
       resizeObserver.disconnect();
     }
-    
+
     resizeObserver = new ResizeObserver(() => {
       recalculateGridColumns();
     });
-    
+
     resizeObserver.observe(gridRef);
     // Initial calculation
     recalculateGridColumns();
@@ -2358,6 +1969,11 @@
 
   function handleTileFocus(index) {
     focusedBookmarkIndex = index;
+  }
+
+  // Handle grid mount event from BookmarkGrid component
+  function handleGridMount(event) {
+    gridRef = event.detail.gridRef;
   }
 
   // Drag and drop functions
@@ -2426,11 +2042,11 @@
 
   async function handleAddShortcutConfirm(data) {
     addShortcutModalOpen = false;
-    
+
     const { folderId, url, title } = data;
-    const normalizedUrl = normalizeUrl(url);
-    
-    if (!normalizedUrl) {
+    const normalizedUrlValue = normalizeUrl(url);
+
+    if (!normalizedUrlValue) {
       alert("That does not appear to be a valid URL.");
       return;
     }
@@ -2439,9 +2055,9 @@
       await chromeApi.bookmarks.create({
         parentId: folderId,
         title,
-        url: normalizedUrl,
+        url: normalizedUrlValue,
       });
-      
+
       // Remember this folder for next time
       settings = { ...settings, lastShortcutFolderId: folderId };
       schedulePersistPreferences();
@@ -2491,12 +2107,12 @@
     if (addShortcutTargetFolderId) {
       return addShortcutTargetFolderId;
     }
-    
+
     const options = shortcutFolderOptions.length > 0 ? shortcutFolderOptions : getShortcutFolderOptions();
     if (options.length === 0) {
       return null;
     }
-    
+
     // Use last used folder if it exists in the current folder list
     if (settings.lastShortcutFolderId) {
       const folderExists = options.some(opt => opt.id === settings.lastShortcutFolderId);
@@ -2504,7 +2120,7 @@
         return settings.lastShortcutFolderId;
       }
     }
-    
+
     // Otherwise, default to the last folder in the currently selected folders
     return options[options.length - 1].id;
   }
@@ -2536,22 +2152,22 @@
     if (urlPrompt === null) {
       return;
     }
-    const normalizedUrl = normalizeUrl(urlPrompt.trim());
-    if (!normalizedUrl) {
+    const normalizedUrlValue = normalizeUrl(urlPrompt.trim());
+    if (!normalizedUrlValue) {
       alert("That does not appear to be a valid URL.");
       return;
     }
 
     const defaultTitle = bookmark.title?.trim()
       ? bookmark.title
-      : bookmark.displayTitle || tryExtractHostname(normalizedUrl);
+      : bookmark.displayTitle || tryExtractHostname(normalizedUrlValue);
     const titlePrompt = prompt("Update the shortcut title:", defaultTitle);
     const title = titlePrompt ? titlePrompt.trim() : defaultTitle;
 
     try {
       await chromeApi.bookmarks.update(bookmark.id, {
         title,
-        url: normalizedUrl,
+        url: normalizedUrlValue,
       });
     } catch (error) {
       console.error("Bookmark Dial: failed to update bookmark", error);
@@ -2592,24 +2208,13 @@
     }
   }
 
-  function openBackgroundDialog() {
-    if (backgroundInput) {
-      backgroundInput.value = "";
-    }
-    backgroundDialog?.showModal();
-  }
-
-  // Track current background object URL for cleanup
-  let currentBackgroundObjectUrl = null;
-
-  async function handleBackgroundSubmit(event) {
-    event.preventDefault();
-    const file = backgroundInput?.files?.[0];
+  // Background dialog handlers
+  async function handleBackgroundSubmit(file) {
     if (!file) {
-      backgroundDialog?.close();
+      backgroundDialogRef?.close();
       return;
     }
-    if (!isSupportedImage(file)) {
+    if (!isSupportedImage(file, MAX_BACKGROUND_BYTES)) {
       alert("Please choose a JPEG or PNG image under 10 MB.");
       return;
     }
@@ -2620,10 +2225,10 @@
         // Also update the mode flag in chrome.storage for sync
         await chromeApi.storage.local.set({ [BACKGROUND_KEY]: "indexeddb" });
       }
-      
+
       // Apply the background using object URL
       applyBackgroundBlob(file);
-      
+
       settings = {
         ...settings,
         background: {
@@ -2631,14 +2236,14 @@
           mode: "custom",
         },
       };
-      backgroundDialog?.close();
+      backgroundDialogRef?.close();
     } catch (error) {
       console.error("Bookmark Dial: failed to save background", error);
       alert("Unable to store the background image. Try a smaller file.");
     }
   }
 
-  async function clearBackground() {
+  async function handleBackgroundClear() {
     try {
       if (shouldPersistPreferences) {
         await clearBackgroundFromIndexedDB();
@@ -2655,11 +2260,11 @@
         mode: "gradient",
       },
     };
-    backgroundDialog?.close();
+    backgroundDialogRef?.close();
   }
 
-  function cancelBackground() {
-    backgroundDialog?.close();
+  function handleBackgroundCancel() {
+    backgroundDialogRef?.close();
   }
 
   async function loadBackground() {
@@ -2683,28 +2288,28 @@
         applyBackgroundBlob(blob);
         return;
       }
-      
+
       // Fall back to legacy chrome.storage for migration
       const stored = await chromeApi.storage.local.get(BACKGROUND_KEY);
       const storedValue = stored?.[BACKGROUND_KEY] || "";
-      
+
       // If it's a data URL (legacy), migrate to IndexedDB
       if (storedValue && storedValue.startsWith("data:")) {
         // Convert data URL to blob and migrate
         try {
           const response = await fetch(storedValue);
-          const blob = await response.blob();
-          await saveBackgroundToIndexedDB(blob);
+          const blobData = await response.blob();
+          await saveBackgroundToIndexedDB(blobData);
           // Update the storage key to indicate migration
           await chromeApi.storage.local.set({ [BACKGROUND_KEY]: "indexeddb" });
-          applyBackgroundBlob(blob);
+          applyBackgroundBlob(blobData);
         } catch (migrationError) {
           console.warn("Bookmark Dial: background migration failed, using legacy", migrationError);
           applyBackgroundImage(storedValue);
         }
         return;
       }
-      
+
       // No background found
       if (!storedValue && settings.background.mode === "custom") {
         settings = {
@@ -2731,7 +2336,7 @@
       URL.revokeObjectURL(currentBackgroundObjectUrl);
       currentBackgroundObjectUrl = null;
     }
-    
+
     if (blob) {
       currentBackgroundObjectUrl = blobToObjectUrl(blob);
       backgroundUrl = currentBackgroundObjectUrl;
@@ -2755,106 +2360,6 @@
   function setStatus(message, tone = "info") {
     statusMessage = message;
     statusTone = tone;
-  }
-
-  function normalizeUrl(input) {
-    try {
-      const url = new URL(input);
-      return url.href;
-    } catch (error) {
-      try {
-        const url = new URL(`https://${input}`);
-        return url.href;
-      } catch {
-        return null;
-      }
-    }
-  }
-
-  function tryExtractHostname(urlString) {
-    try {
-      const url = new URL(urlString);
-      return url.hostname.replace(/^www\./i, "");
-    } catch {
-      return urlString;
-    }
-  }
-
-  function deriveInitials(text) {
-    if (!text) {
-      return "•";
-    }
-    const firstWord = text.trim().split(/\s+/)[0];
-    return firstWord.slice(0, 2).toUpperCase();
-  }
-
-  function debounce(fn, delay) {
-    let timer;
-    return (...args) => {
-      clearTimeout(timer);
-      timer = setTimeout(() => fn(...args), delay);
-    };
-  }
-
-  function generateDialPalette(input) {
-    const text = (input || "").trim().toLowerCase();
-    if (!text) {
-      return {
-        background: "linear-gradient(145deg, #fde68a, #fbbf24)",
-        text: "rgba(15, 23, 42, 0.85)",
-      };
-    }
-
-    let hueSeed = 0;
-    let satSeed = 0;
-    let lightSeed = 0;
-    for (let i = 0; i < text.length; i++) {
-      const code = text.charCodeAt(i);
-      const weight = i + 1;
-      hueSeed += code * weight;
-      satSeed += code * (weight + 1.5);
-      lightSeed += code * (weight + 2.5);
-    }
-
-    const baseHue = positiveModulo(hueSeed, 360);
-    const hueSpread = positiveModulo(satSeed, 36) - 18;
-    const accentHue = positiveModulo(baseHue + 24 + hueSpread, 360);
-
-    const baseSaturation = 52 + (Math.abs(satSeed) % 30);
-    const baseLightness = 42 + (Math.abs(lightSeed) % 20);
-    const accentSaturation = Math.min(96, baseSaturation + 8);
-    const accentLightness = Math.min(78, baseLightness + 12);
-
-    const primary = `hsl(${baseHue}, ${baseSaturation}%, ${baseLightness}%)`;
-    const secondary = `hsl(${accentHue}, ${accentSaturation}%, ${accentLightness}%)`;
-    const textColor = baseLightness > 54 ? "rgba(30, 41, 59, 0.85)" : "rgba(255, 255, 255, 0.88)";
-
-    return {
-      background: `linear-gradient(140deg, ${primary}, ${secondary})`,
-      text: textColor,
-    };
-  }
-
-  function positiveModulo(value, modulo) {
-    return ((value % modulo) + modulo) % modulo;
-  }
-
-  function isSupportedImage(file) {
-    const validTypes = ["image/jpeg", "image/png"];
-    return validTypes.includes(file.type) && file.size <= MAX_BACKGROUND_BYTES;
-  }
-
-  function fileToDataUrl(file, maxBytes) {
-    return new Promise((resolve, reject) => {
-      if (file.size > maxBytes) {
-        reject(new Error("File exceeds size limit"));
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
-      reader.readAsDataURL(file);
-    });
   }
 
   /**
@@ -2922,542 +2427,6 @@
       // Ignore errors on clear
     }
   }
-
-  /**
-   * Convert a Blob to an object URL for efficient display.
-   * Object URLs are much more memory-efficient than data URLs.
-   */
-  function blobToObjectUrl(blob) {
-    if (!blob) return "";
-    return URL.createObjectURL(blob);
-  }
-
-
-function createMockChrome() {
-  console.info("Bookmark Dial: using mock Chrome APIs for development");
-  let mockFolderId = "mock-folder";
-  let counter = 1;
-
-  const listeners = {
-    onCreated: new Set(),
-    onChanged: new Set(),
-    onMoved: new Set(),
-    onRemoved: new Set(),
-    onImportBegan: new Set(),
-    onImportEnded: new Set(),
-  };
-
-  const storageListeners = new Set();
-  const mockStorageLocal = new Map();
-  const mockStorageSync = new Map([
-    ["speedDialFolderId", mockFolderId],
-    [
-      SYNC_SETTINGS_KEY,
-      {
-        version: STORAGE_VERSION,
-        theme: DEFAULT_SETTINGS.theme,
-        accent: DEFAULT_SETTINGS.accent,
-        titleBackdrop: DEFAULT_SETTINGS.titleBackdrop,
-        mergeAllBookmarks: DEFAULT_SETTINGS.mergeAllBookmarks,
-        background: { ...DEFAULT_SETTINGS.background },
-        folderSelection: { selectedIds: [mockFolderId], expandedIds: [] },
-      },
-    ],
-  ]);
-
-  const nodesById = new Map();
-
-  function emit(event, ...args) {
-    const set = listeners[event];
-    if (!set) {
-      return;
-    }
-    set.forEach((handler) => {
-      try {
-        handler(...args);
-      } catch (error) {
-        console.error(`Mock chrome ${event} handler failed`, error);
-      }
-    });
-  }
-
-  function emitStorageChange(area, changes) {
-    if (!changes || Object.keys(changes).length === 0) {
-      return;
-    }
-    storageListeners.forEach((handler) => {
-      try {
-        handler(changes, area);
-      } catch (error) {
-        console.error("Mock chrome storage listener failed", error);
-      }
-    });
-  }
-
-  function cloneSerializable(value) {
-    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
-  }
-
-  function storageGet(store, key) {
-    if (Array.isArray(key)) {
-      const result = {};
-      key.forEach((k) => (result[k] = store.get(k)));
-      return result;
-    }
-    if (typeof key === "object" && key !== null) {
-      const result = { ...key };
-      for (const k of Object.keys(key)) {
-        if (store.has(k)) {
-          result[k] = store.get(k);
-        }
-      }
-      return result;
-    }
-    return { [key]: store.get(key) };
-  }
-
-  function storageSet(store, area, items) {
-    const changes = {};
-    Object.entries(items || {}).forEach(([key, value]) => {
-      const oldValue = store.get(key);
-      store.set(key, value);
-      changes[key] = {
-        oldValue: cloneSerializable(oldValue),
-        newValue: cloneSerializable(value),
-      };
-    });
-    emitStorageChange(area, changes);
-  }
-
-  function storageRemove(store, area, key) {
-    const keys = Array.isArray(key) ? key : [key];
-    const changes = {};
-    keys.forEach((entry) => {
-      if (!store.has(entry)) {
-        return;
-      }
-      const oldValue = store.get(entry);
-      store.delete(entry);
-      changes[entry] = {
-        oldValue: cloneSerializable(oldValue),
-        newValue: undefined,
-      };
-    });
-    emitStorageChange(area, changes);
-  }
-
-  function reindexChildren(parent) {
-    if (!parent?.children) {
-      return;
-    }
-    parent.children.forEach((child, index) => {
-      child.index = index;
-    });
-    parent.hasChildren = parent.children.some((child) => !child.url);
-  }
-
-  function attachChild(parentId, node, index) {
-    const parent = nodesById.get(parentId);
-    if (!parent) {
-      throw new Error(`Parent ${parentId} not found`);
-    }
-    if (!Array.isArray(parent.children)) {
-      parent.children = [];
-    }
-    const insertIndex = typeof index === "number" ? Math.max(0, Math.min(index, parent.children.length)) : parent.children.length;
-    parent.children.splice(insertIndex, 0, node);
-    node.parentId = parentId;
-    reindexChildren(parent);
-  }
-
-  function detachChild(parentId, nodeId) {
-    const parent = nodesById.get(parentId);
-    if (!parent?.children) {
-      return;
-    }
-    const idx = parent.children.findIndex((child) => child.id === nodeId);
-    if (idx !== -1) {
-      parent.children.splice(idx, 1);
-      reindexChildren(parent);
-    }
-  }
-
-  function createFolderNode({ id, parentId = null, title = "Untitled folder", index }) {
-    const nodeId = id ?? `mock-folder-${counter++}`;
-    const node = {
-      id: nodeId,
-      parentId,
-      title,
-      index: typeof index === "number" ? index : 0,
-      children: [],
-    };
-    nodesById.set(nodeId, node);
-    if (parentId) {
-      attachChild(parentId, node, index);
-    }
-    return node;
-  }
-
-  function createBookmarkNode({ id, parentId, title, url, index }) {
-    if (!parentId) {
-      throw new Error("Bookmarks require a parent folder");
-    }
-    const nodeId = id ?? `mock-bookmark-${counter++}`;
-    const node = {
-      id: nodeId,
-      parentId,
-      title: title ?? url ?? "Untitled",
-      url,
-      index: typeof index === "number" ? index : 0,
-    };
-    nodesById.set(nodeId, node);
-    attachChild(parentId, node, index);
-    return node;
-  }
-
-  function cloneNode(node, includeChildren = false) {
-    if (!node) {
-      return null;
-    }
-    const base = {
-      id: node.id,
-      parentId: node.parentId ?? undefined,
-      title: node.title,
-      index: node.index,
-    };
-    if (node.url) {
-      base.url = node.url;
-    }
-    if (includeChildren && Array.isArray(node.children)) {
-      base.children = node.children.map((child) => cloneNode(child, true));
-    }
-    return base;
-  }
-
-  function deleteBranch(node) {
-    if (!node) {
-      return;
-    }
-    if (Array.isArray(node.children)) {
-      [...node.children].forEach((child) => deleteBranch(child));
-    }
-    nodesById.delete(node.id);
-  }
-
-  const root = createFolderNode({ id: "0", parentId: null, title: "" });
-  const bookmarksBar = createFolderNode({ id: "1", parentId: root.id, title: "Bookmarks Bar" });
-  createFolderNode({ id: "2", parentId: root.id, title: "Other Bookmarks" });
-  createFolderNode({ id: "3", parentId: root.id, title: "Mobile Bookmarks" });
-  const readingListFolder = createFolderNode({ id: "1-reading", parentId: "1", title: "Reading List" });
-  const inspirationFolder = createFolderNode({ id: "2-inspiration", parentId: "2", title: "Inspiration" });
-
-  function populateDialFolder(folderId) {
-    const baseBookmarks = [
-      { title: "Svelte", url: "https://svelte.dev" },
-      { title: "MDN Web Docs", url: "https://developer.mozilla.org" },
-      { title: "GitHub", url: "https://github.com" },
-      { title: "Stack Overflow", url: "https://stackoverflow.com" },
-      { title: "Vite", url: "https://vitejs.dev" },
-    ];
-    baseBookmarks.forEach((item, index) => {
-      createBookmarkNode({ parentId: folderId, title: item.title, url: item.url, index });
-    });
-
-    const frameworksFolder = createFolderNode({ id: `${folderId}-frameworks`, parentId: folderId, title: "Frameworks" });
-    [
-      { title: "React", url: "https://react.dev" },
-      { title: "Vue.js", url: "https://vuejs.org" },
-      { title: "Angular", url: "https://angular.io" },
-      { title: "Ember.js", url: "https://emberjs.com" },
-      { title: "Lit", url: "https://lit.dev" },
-      { title: "Solid", url: "https://www.solidjs.com" },
-      { title: "Alpine.js", url: "https://alpinejs.dev" },
-      { title: "Preact", url: "https://preact.dev" },
-      { title: "Backbone.js", url: "https://backbonejs.org" },
-      { title: "jQuery", url: "https://jquery.com" },
-      { title: "Next.js", url: "https://nextjs.org" },
-      { title: "Nuxt.js", url: "https://nuxt.com" },
-    ].forEach((item, index) => {
-      createBookmarkNode({ parentId: frameworksFolder.id, title: item.title, url: item.url, index });
-    });
-  }
-
-  createFolderNode({ id: mockFolderId, parentId: bookmarksBar.id, title: "Bookmark Dial" });
-  populateDialFolder(mockFolderId);
-
-  // Create Developer Tools folder in Bookmarks Bar (top level)
-  const toolingFolder = createFolderNode({ id: "bookmarks-bar-tooling", parentId: bookmarksBar.id, title: "Developer Tools" });
-  developerTools.forEach((item, index) => {
-    createBookmarkNode({ parentId: toolingFolder.id, title: item.title, url: item.url, index });
-  });
-
-  // Populate intricate Reading List with 3 layers of nested folders
-  // Layer 1: Fiction
-  const fictionFolder = createFolderNode({ id: "reading-fiction", parentId: readingListFolder.id, title: "Fiction" });
-  
-  // Layer 2: Fiction - Classic Novels
-  const classicNovelsFolder = createFolderNode({ id: "reading-fiction-classic", parentId: fictionFolder.id, title: "Classic Novels" });
-  literatureLinks.fiction.classicNovels.forEach((item, index) => {
-    createBookmarkNode({ parentId: classicNovelsFolder.id, title: item.title, url: item.url, index });
-  });
-  
-  // Layer 2: Fiction - Modern Fiction
-  const modernFictionFolder = createFolderNode({ id: "reading-fiction-modern", parentId: fictionFolder.id, title: "Modern Fiction" });
-  literatureLinks.fiction.modernFiction.forEach((item, index) => {
-    createBookmarkNode({ parentId: modernFictionFolder.id, title: item.title, url: item.url, index });
-  });
-  
-  // Layer 2: Fiction - Short Stories
-  const shortStoriesFolder = createFolderNode({ id: "reading-fiction-short", parentId: fictionFolder.id, title: "Short Stories" });
-  literatureLinks.fiction.shortStories.forEach((item, index) => {
-    createBookmarkNode({ parentId: shortStoriesFolder.id, title: item.title, url: item.url, index });
-  });
-
-  // Layer 1: Non-Fiction
-  const nonFictionFolder = createFolderNode({ id: "reading-nonfiction", parentId: readingListFolder.id, title: "Non-Fiction" });
-  
-  // Layer 2: Non-Fiction - Essays
-  const essaysFolder = createFolderNode({ id: "reading-nonfiction-essays", parentId: nonFictionFolder.id, title: "Essays" });
-  literatureLinks.nonFiction.essays.forEach((item, index) => {
-    createBookmarkNode({ parentId: essaysFolder.id, title: item.title, url: item.url, index });
-  });
-  
-  // Layer 2: Non-Fiction - Biography
-  const biographyFolder = createFolderNode({ id: "reading-nonfiction-bio", parentId: nonFictionFolder.id, title: "Biography" });
-  literatureLinks.nonFiction.biography.forEach((item, index) => {
-    createBookmarkNode({ parentId: biographyFolder.id, title: item.title, url: item.url, index });
-  });
-  
-  // Layer 2: Non-Fiction - History
-  const historyFolder = createFolderNode({ id: "reading-nonfiction-history", parentId: nonFictionFolder.id, title: "History" });
-  literatureLinks.nonFiction.history.forEach((item, index) => {
-    createBookmarkNode({ parentId: historyFolder.id, title: item.title, url: item.url, index });
-  });
-
-  // Layer 1: Poetry
-  const poetryFolder = createFolderNode({ id: "reading-poetry", parentId: readingListFolder.id, title: "Poetry" });
-  
-  // Layer 2: Poetry - Classic Poetry
-  const classicPoetryFolder = createFolderNode({ id: "reading-poetry-classic", parentId: poetryFolder.id, title: "Classic Poetry" });
-  literatureLinks.poetry.classicPoetry.forEach((item, index) => {
-    createBookmarkNode({ parentId: classicPoetryFolder.id, title: item.title, url: item.url, index });
-  });
-  
-  // Layer 2: Poetry - Contemporary Poetry
-  const contemporaryPoetryFolder = createFolderNode({ id: "reading-poetry-contemporary", parentId: poetryFolder.id, title: "Contemporary Poetry" });
-  literatureLinks.poetry.contemporaryPoetry.forEach((item, index) => {
-    createBookmarkNode({ parentId: contemporaryPoetryFolder.id, title: item.title, url: item.url, index });
-  });
-  
-  // Layer 2: Poetry - Spoken Word
-  const spokenWordFolder = createFolderNode({ id: "reading-poetry-spoken", parentId: poetryFolder.id, title: "Spoken Word" });
-  literatureLinks.poetry.spokenWord.forEach((item, index) => {
-    createBookmarkNode({ parentId: spokenWordFolder.id, title: item.title, url: item.url, index });
-  });
-
-  // Layer 1: Academic
-  const academicFolder = createFolderNode({ id: "reading-academic", parentId: readingListFolder.id, title: "Academic" });
-  
-  // Layer 2: Academic - Literary Criticism
-  const literaryCriticismFolder = createFolderNode({ id: "reading-academic-criticism", parentId: academicFolder.id, title: "Literary Criticism" });
-  literatureLinks.academic.literaryCriticism.forEach((item, index) => {
-    createBookmarkNode({ parentId: literaryCriticismFolder.id, title: item.title, url: item.url, index });
-  });
-  
-  // Layer 2: Academic - Literary Theory
-  const literaryTheoryFolder = createFolderNode({ id: "reading-academic-theory", parentId: academicFolder.id, title: "Literary Theory" });
-  literatureLinks.academic.literaryTheory.forEach((item, index) => {
-    createBookmarkNode({ parentId: literaryTheoryFolder.id, title: item.title, url: item.url, index });
-  });
-  
-  // Layer 2: Academic - Journals
-  const journalsFolder = createFolderNode({ id: "reading-academic-journals", parentId: academicFolder.id, title: "Academic Journals" });
-  literatureLinks.academic.journals.forEach((item, index) => {
-    createBookmarkNode({ parentId: journalsFolder.id, title: item.title, url: item.url, index });
-  });
-
-  [
-    { title: "Muz.li", url: "https://muz.li" },
-    { title: "Awwwards", url: "https://www.awwwards.com" },
-    { title: "Dribbble", url: "https://dribbble.com" },
-  ].forEach((item, index) => {
-    createBookmarkNode({ parentId: inspirationFolder.id, title: item.title, url: item.url, index });
-  });
-
-  function makeEvent(name) {
-    const set = listeners[name];
-    return {
-      addListener: (fn) => set.add(fn),
-      removeListener: (fn) => set.delete(fn),
-    };
-  }
-
-  return {
-    runtime: {
-      sendMessage: async (message) => {
-        if (message?.type === "getFolderId") {
-          return { folderId: mockFolderId };
-        }
-        if (message?.type === "resetFolderCache") {
-          const newFolderId = `mock-folder-${Date.now().toString(36)}`;
-          const existing = nodesById.get(mockFolderId);
-          if (existing) {
-            const parentId = existing.parentId;
-            if (parentId) {
-              detachChild(parentId, existing.id);
-            }
-            deleteBranch(existing);
-          }
-          mockFolderId = newFolderId;
-          const recreated = createFolderNode({ id: mockFolderId, parentId: "1", title: "Bookmark Dial" });
-          populateDialFolder(recreated.id);
-          storageSet(mockStorageSync, "sync", {
-            speedDialFolderId: mockFolderId,
-            [SYNC_SETTINGS_KEY]: {
-              version: STORAGE_VERSION,
-              theme: DEFAULT_SETTINGS.theme,
-              accent: DEFAULT_SETTINGS.accent,
-              titleBackdrop: DEFAULT_SETTINGS.titleBackdrop,
-              mergeAllBookmarks: DEFAULT_SETTINGS.mergeAllBookmarks,
-              background: { ...DEFAULT_SETTINGS.background },
-              folderSelection: { selectedIds: [mockFolderId], expandedIds: [] },
-            },
-          });
-          return { folderId: mockFolderId };
-        }
-        return {};
-      },
-    },
-    bookmarks: {
-      onCreated: makeEvent("onCreated"),
-      onChanged: makeEvent("onChanged"),
-      onMoved: makeEvent("onMoved"),
-      onRemoved: makeEvent("onRemoved"),
-      onImportBegan: makeEvent("onImportBegan"),
-      onImportEnded: makeEvent("onImportEnded"),
-      async getTree() {
-        return [cloneNode(nodesById.get("0"), true)];
-      },
-      async getChildren(id) {
-        const parent = nodesById.get(id);
-        if (!parent?.children) {
-          return [];
-        }
-        return parent.children.map((child) => cloneNode(child, false));
-      },
-      async getSubTree(id) {
-        const node = nodesById.get(id);
-        return node ? [cloneNode(node, true)] : [];
-      },
-      async search(info) {
-        const query = String(info?.query ?? "").trim().toLowerCase();
-        if (!query) {
-          return [];
-        }
-        return Array.from(nodesById.values())
-          .filter((node) => !node.url && (node.title || "").toLowerCase().includes(query))
-          .map((node) => cloneNode(node, false));
-      },
-      async create({ parentId, title, url }) {
-        const node = url
-          ? createBookmarkNode({ parentId, title, url })
-          : createFolderNode({ parentId, title });
-        emit("onCreated", node.id, cloneNode(node, true));
-        return cloneNode(node, true);
-      },
-      async update(id, changes = {}) {
-        const node = nodesById.get(id);
-        if (!node) {
-          throw new Error("Bookmark not found");
-        }
-        const changeInfo = {};
-        if (typeof changes.title === "string") {
-          node.title = changes.title;
-          changeInfo.title = changes.title;
-        }
-        if (typeof changes.url === "string") {
-          node.url = changes.url;
-          changeInfo.url = changes.url;
-        }
-        emit("onChanged", id, changeInfo);
-        return cloneNode(node, false);
-      },
-      async remove(id) {
-        const node = nodesById.get(id);
-        if (!node) {
-          throw new Error("Bookmark not found");
-        }
-        const snapshot = cloneNode(node, true);
-        if (node.parentId) {
-          detachChild(node.parentId, id);
-        }
-        deleteBranch(node);
-        emit("onRemoved", id, { parentId: snapshot.parentId ?? null, node: snapshot });
-      },
-      async move(id, { parentId, index }) {
-        const node = nodesById.get(id);
-        if (!node) {
-          throw new Error("Bookmark not found");
-        }
-        const oldParentId = node.parentId ?? null;
-        if (oldParentId) {
-          detachChild(oldParentId, id);
-        }
-        attachChild(parentId, node, index);
-        emit("onMoved", id, { parentId, oldParentId, index });
-        return cloneNode(node, false);
-      },
-    },
-    storage: {
-      local: {
-        async get(key) {
-          return storageGet(mockStorageLocal, key);
-        },
-        async set(items) {
-          storageSet(mockStorageLocal, "local", items);
-        },
-        async remove(key) {
-          storageRemove(mockStorageLocal, "local", key);
-        },
-      },
-      sync: {
-        async get(key) {
-          return storageGet(mockStorageSync, key);
-        },
-        async set(items) {
-          storageSet(mockStorageSync, "sync", items);
-        },
-        async remove(key) {
-          storageRemove(mockStorageSync, "sync", key);
-        },
-      },
-      onChanged: {
-        addListener(fn) {
-          storageListeners.add(fn);
-        },
-        removeListener(fn) {
-          storageListeners.delete(fn);
-        },
-      },
-    },
-    topSites: {
-      async get() {
-        // Mock top sites for development
-        return [
-          { title: "Google", url: "https://www.google.com" },
-          { title: "YouTube", url: "https://www.youtube.com" },
-          { title: "Facebook", url: "https://www.facebook.com" },
-          { title: "Twitter", url: "https://twitter.com" },
-          { title: "Reddit", url: "https://www.reddit.com" },
-          { title: "Wikipedia", url: "https://www.wikipedia.org" },
-          { title: "Amazon", url: "https://www.amazon.com" },
-          { title: "Netflix", url: "https://www.netflix.com" },
-        ];
-      },
-    },
-  };
-}
-
 </script>
 
 <div
@@ -3501,223 +2470,29 @@ function createMockChrome() {
     </svg>
   </button>
 
-  <aside
-    id="settings-drawer"
-    class="settings-drawer"
-    data-open={settingsOpen}
-    aria-hidden={!settingsOpen}
-    tabindex="-1"
-    bind:this={settingsDrawer}
-    on:click|stopPropagation
-  >
-    <header class="settings-drawer__header">
-      <h2>
-        <img src="/icons/icon-48.png" alt="Bookmark Dial" class="settings-drawer__brand-icon" />
-        Settings
-      </h2>
-      <button
-        type="button"
-        class="settings-drawer__close"
-        aria-label="Close settings"
-        on:click={closeSettings}
-      >
-        &times;
-      </button>
-    </header>
-
-    <section class="settings-group">
-      <h3>Theme</h3>
-      <div class="choice-row">
-        {#each THEME_OPTIONS as option}
-          <button
-            type="button"
-            class="choice-button"
-            data-active={settings.theme === option.id}
-            on:click={() => setThemeChoice(option.id)}
-          >
-            {option.label}
-          </button>
-        {/each}
-      </div>
-    </section>
-
-    <section class="settings-group">
-      <h3>Accent color</h3>
-      <div class="accent-grid">
-        {#each visibleAccentOptions as option}
-          <button
-            type="button"
-            class="accent-swatch"
-            style={`--swatch-color: ${option.colors.base};`}
-            data-active={settings.accent === option.id}
-            aria-label={option.label}
-            title={option.label}
-            on:click={() => setAccentChoice(option.id)}
-          ></button>
-        {/each}
-      </div>
-      {#if ACCENT_OPTIONS.length > ACCENT_PREVIEW_COUNT}
-        <div class="swatch-toggle-row">
-          <button
-            type="button"
-            class="swatch-toggle-button"
-            aria-expanded={showAllAccents}
-            on:click={toggleAccentOptions}
-          >
-            {showAllAccents ? "Show fewer accent colors" : "More accent colors"}
-          </button>
-        </div>
-      {/if}
-    </section>
-
-    <section class="settings-group">
-      <h3>Tile titles</h3>
-      <label
-        class="settings-toggle"
-        title="Adds a soft highlight behind each title for contrast."
-      >
-        <input
-          type="checkbox"
-          checked={settings.titleBackdrop}
-          on:change={(event) => setTitleBackdrop(event.currentTarget.checked)}
-        />
-        <div class="settings-toggle__body">
-          <span class="settings-toggle__label">Rounded backdrop</span>
-        </div>
-      </label>
-    </section>
-
-    <section class="settings-group">
-      <h3>Gradient background</h3>
-      <div class="gradient-grid">
-        {#each visibleGradientOptions as option}
-          <button
-            type="button"
-            class="gradient-option"
-            style={`--gradient-sample-light: ${option.gradients.light}; --gradient-sample-dark: ${option.gradients.dark};`}
-            data-active={settings.background.mode === "gradient" && settings.background.gradientId === option.id}
-            on:click={() => selectGradient(option.id)}
-          >
-            <span>{option.label}</span>
-          </button>
-        {/each}
-      </div>
-      {#if GRADIENT_OPTIONS.length > GRADIENT_PREVIEW_COUNT}
-        <div class="swatch-toggle-row">
-          <button
-            type="button"
-            class="swatch-toggle-button"
-            aria-expanded={showAllGradients}
-            on:click={toggleGradientOptions}
-          >
-            {showAllGradients ? "Show fewer gradients" : "More gradients"}
-          </button>
-        </div>
-      {/if}
-    </section>
-
-    <section class="settings-group">
-      <button type="button" class="custom-background-button" on:click={showCustomBackgroundPicker}>
-        Custom background…
-      </button>
-    </section>
-
-    <section class="settings-group settings-group--folders">
-      <h3>Folders</h3>
-      <div class="folder-bar">
-        <div class="folder-bar__summary">
-          {#if folderSummary.length === 0}
-            <span class="folder-chip folder-chip--empty" title="Default Bookmark Dial folder">
-              Default folder
-            </span>
-          {:else}
-            {#each folderSummary as item (item.id)}
-              <span class="folder-chip" title={item.fullPath}>
-                <span class="folder-chip__label">{item.label}</span>
-                <span class="folder-chip__count">{item.count}</span>
-              </span>
-            {/each}
-          {/if}
-        </div>
-        <button type="button" class="ghost-button folder-bar__action" on:click={openFolderModal}>
-          Manage folders
-        </button>
-      </div>
-      <label class="settings-toggle folder-group-toggle">
-        <input
-          type="checkbox"
-          checked={settings.mergeAllBookmarks}
-          on:change={(event) => setMergeAllBookmarks(event.currentTarget.checked)}
-        />
-        <div class="settings-toggle__body">
-          <span class="settings-toggle__label">Merge bookmarks from all folders</span>
-          <span class="settings-toggle__description">
-            Display all bookmarks in a single deduplicated grid.
-          </span>
-        </div>
-      </label>
-
-      {#if !settings.mergeAllBookmarks}
-        <div class="ungrouped-settings">
-          <label class="settings-control">
-            <span class="settings-control__label">Folder width</span>
-            <input
-              type="range"
-              min="480"
-              max="1860"
-              step="20"
-              value={settings.folderColumnWidth}
-              on:input={(e) => setFolderColumnWidth(e.currentTarget.value)}
-            />
-          </label>
-
-          <label class="settings-toggle">
-            <input
-              type="checkbox"
-              checked={settings.compactFolderHeader}
-              on:change={(e) => setCompactFolderHeader(e.currentTarget.checked)}
-            />
-            <div class="settings-toggle__body">
-              <span class="settings-toggle__label">Compact header</span>
-              <span class="settings-toggle__description">
-                Hide folder path to save space.
-              </span>
-            </div>
-          </label>
-        </div>
-      {/if}
-    </section>
-
-    <section class="settings-group">
-      <h3>Experimental</h3>
-      <label class="settings-toggle">
-        <input
-          type="checkbox"
-          checked={settings.enableBookmarkSearch}
-          on:change={(e) => setEnableBookmarkSearch(e.currentTarget.checked)}
-        />
-        <div class="settings-toggle__body">
-          <span class="settings-toggle__label">Bookmark search</span>
-          <span class="settings-toggle__description">
-            Press <kbd>/</kbd> to search bookmarks.
-          </span>
-        </div>
-      </label>
-      <label class="settings-toggle">
-        <input
-          type="checkbox"
-          checked={settings.enableTopSites}
-          on:change={(e) => setEnableTopSites(e.currentTarget.checked)}
-        />
-        <div class="settings-toggle__body">
-          <span class="settings-toggle__label">Show frequently visited</span>
-          <span class="settings-toggle__description">
-            Include your most visited sites alongside bookmarks.
-          </span>
-        </div>
-      </label>
-    </section>
-  </aside>
+  <SettingsDrawer
+    open={settingsOpen}
+    {settings}
+    {folderSummary}
+    {visibleAccentOptions}
+    {visibleGradientOptions}
+    {showAllAccents}
+    {showAllGradients}
+    onClose={closeSettings}
+    onThemeChange={setThemeChoice}
+    onAccentChange={setAccentChoice}
+    onTitleBackdropChange={setTitleBackdrop}
+    onGradientSelect={selectGradient}
+    onCustomBackgroundClick={showCustomBackgroundPicker}
+    onMergeAllChange={setMergeAllBookmarks}
+    onFolderColumnWidthChange={setFolderColumnWidth}
+    onCompactHeaderChange={setCompactFolderHeader}
+    onSearchToggle={setEnableBookmarkSearch}
+    onTopSitesToggle={setEnableTopSites}
+    onToggleAccents={toggleAccentOptions}
+    onToggleGradients={toggleGradientOptions}
+    onOpenFolderModal={openFolderModal}
+  />
 
   <div
     class="settings-overlay"
@@ -3736,141 +2511,69 @@ function createMockChrome() {
       />
     {/if}
 
-    <section id="status" role="status" aria-live="polite" data-tone={statusMessage ? statusTone : null}>
-      {statusMessage}
-    </section>
-
-    {#if settings.mergeAllBookmarks}
-      <div
-        id="dial-grid"
-        class="grid"
-        aria-label="Bookmark Dial links"
-        bind:this={gridRef}
-        tabindex="-1"
-        role="group"
-      >
-        {#each filteredBookmarks as bookmark, index (bookmark.id)}
-          <BookmarkTile
-            {bookmark}
-            titleBackdrop={settings.titleBackdrop}
-            menuOpen={openMenuId === bookmark.id}
-            focused={focusedBookmarkIndex === index}
-            dragging={draggedBookmark?.id === bookmark.id}
-            dragOver={dragOverBookmark?.id === bookmark.id}
-            onToggleMenu={() => toggleTileMenu(bookmark.id)}
-            onEdit={() => editBookmark(bookmark)}
-            onRemove={() => removeBookmark(bookmark.id)}
-            onFallback={() => showFallback(bookmark.id)}
-            onContextMenu={(e) => showContextMenu(e, bookmark)}
-            onFocus={() => handleTileFocus(index)}
-            onDragStart={(e) => handleDragStart(e, bookmark)}
-            onDragOver={(e) => handleDragOver(e, bookmark)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, bookmark)}
-            onDragEnd={handleDragEnd}
-            getFaviconUrl={getFaviconUrl}
-          />
+    {#if isLoading}
+      <!-- Skeleton loading UI with 5 placeholder tiles -->
+      <div class="grid skeleton-grid" aria-hidden="true">
+        {#each Array(5) as _, i}
+          <div class="tile skeleton-tile">
+            <div class="skeleton-icon"></div>
+            <div class="skeleton-title"></div>
+          </div>
         {/each}
-        {#if settings.enableTopSites && topSites.length > 0}
-          {#each topSites as site, siteIndex (site.id)}
-            <BookmarkTile
-              bookmark={site}
-              titleBackdrop={settings.titleBackdrop}
-              menuOpen={false}
-              focused={focusedBookmarkIndex === filteredBookmarks.length + siteIndex}
-              dragging={false}
-              dragOver={false}
-              onToggleMenu={() => {}}
-              onEdit={() => {}}
-              onRemove={() => {}}
-              onFallback={() => {}}
-              onContextMenu={() => {}}
-              onFocus={() => handleTileFocus(filteredBookmarks.length + siteIndex)}
-              onDragStart={() => {}}
-              onDragOver={() => {}}
-              onDragLeave={() => {}}
-              onDrop={() => {}}
-              onDragEnd={() => {}}
-              getFaviconUrl={getFaviconUrl}
-              isTopSite={true}
-            />
-          {/each}
-        {/if}
-        <article class="tile add-tile" draggable="false">
-          <button class="add-button" type="button" on:click={handleAddBookmark} aria-label="Add new bookmark shortcut">
-            <span aria-hidden="true">+</span>
-            <div>Add shortcut</div>
-          </button>
-        </article>
       </div>
     {:else}
-      <div class="folder-grid-list" aria-label="Bookmark folders" style:max-width="{settings.folderColumnWidth}px">
-        {#each filteredFolderGroups as group (group.id)}
-          <section class="folder-section">
-            <header class="folder-section__header">
-              <div class="folder-section__titles">
-                {#if settings.compactFolderHeader}
-                  <h4 class="folder-section__title" title={group.fullPath}>{group.label}</h4>
-                {:else}
-                  <h4 class="folder-section__title">{group.label}</h4>
-                  {#if group.fullPath && group.fullPath !== group.label}
-                    <p class="folder-section__path">{group.fullPath}</p>
-                  {/if}
-                {/if}
-              </div>
-            </header>
-            {#if group.items.length}
-              <div
-                class="grid folder-section__grid"
-                role="group"
-                aria-label={`Shortcuts in ${group.fullPath || group.label}`}
-              >
-                {#each group.items as bookmark (bookmark.id)}
-                  <BookmarkTile
-                    {bookmark}
-                    titleBackdrop={settings.titleBackdrop}
-                    menuOpen={openMenuId === bookmark.id}
-                    focused={false}
-                    dragging={draggedBookmark?.id === bookmark.id}
-                    dragOver={dragOverBookmark?.id === bookmark.id}
-                    onToggleMenu={() => toggleTileMenu(bookmark.id)}
-                    onEdit={() => editBookmark(bookmark)}
-                    onRemove={() => removeBookmark(bookmark.id)}
-                    onFallback={() => showFallback(bookmark.id)}
-                    onContextMenu={(e) => showContextMenu(e, bookmark)}
-                    onFocus={() => {}}
-                    onDragStart={(e) => handleDragStart(e, bookmark, group.id)}
-                    onDragOver={(e) => handleDragOver(e, bookmark)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, bookmark)}
-                    onDragEnd={handleDragEnd}
-                    getFaviconUrl={getFaviconUrl}
-                  />
-                {/each}
-                <article class="tile add-tile" draggable="false">
-                  <button class="add-button" type="button" on:click={() => handleAddBookmark(group.id)}>
-                    <span aria-hidden="true">+</span>
-                    <div>Add shortcut</div>
-                  </button>
-                </article>
-              </div>
-            {:else}
-              <div
-                class="grid folder-section__grid"
-                role="group"
-                aria-label={`Shortcuts in ${group.fullPath || group.label}`}
-              >
-                <article class="tile add-tile" draggable="false">
-                  <button class="add-button" type="button" on:click={() => handleAddBookmark(group.id)}>
-                    <span aria-hidden="true">+</span>
-                    <div>Add shortcut</div>
-                  </button>
-                </article>
-              </div>
-            {/if}
-          </section>
-        {/each}
-      </div>
+      <section id="status" role="status" aria-live="polite" data-tone={statusMessage ? statusTone : null}>
+        {statusMessage}
+      </section>
+
+      {#if settings.mergeAllBookmarks}
+      <BookmarkGrid
+        bookmarks={filteredBookmarks}
+        {topSites}
+        showTopSites={settings.enableTopSites}
+        titleBackdrop={settings.titleBackdrop}
+        focusedIndex={focusedBookmarkIndex}
+        {openMenuId}
+        {draggedBookmark}
+        {dragOverBookmark}
+        onTileMenu={toggleTileMenu}
+        onTileEdit={editBookmark}
+        onTileRemove={removeBookmark}
+        onTileFallback={showFallback}
+        onTileContextMenu={showContextMenu}
+        onTileFocus={handleTileFocus}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onDragEnd={handleDragEnd}
+        onAddShortcut={handleAddBookmark}
+        {getFaviconUrl}
+        on:gridmount={handleGridMount}
+      />
+    {:else}
+      <FolderGroupList
+        groups={filteredFolderGroups}
+        columnWidth={settings.folderColumnWidth}
+        compactHeader={settings.compactFolderHeader}
+        titleBackdrop={settings.titleBackdrop}
+        {openMenuId}
+        {draggedBookmark}
+        {dragOverBookmark}
+        onTileMenu={toggleTileMenu}
+        onTileEdit={editBookmark}
+        onTileRemove={removeBookmark}
+        onTileFallback={showFallback}
+        onTileContextMenu={showContextMenu}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onDragEnd={handleDragEnd}
+        onAddShortcut={handleAddBookmark}
+        {getFaviconUrl}
+      />
+    {/if}
     {/if}
   </main>
 
@@ -3927,27 +2630,9 @@ function createMockChrome() {
   />
 </div>
 
-<dialog bind:this={backgroundDialog}>
-  <form id="background-form" method="dialog" on:submit={handleBackgroundSubmit}>
-    <header>
-      <h2>Custom background</h2>
-    </header>
-    <div class="dialog-body">
-      <label class="file-picker">
-        <span>Choose an image (JPEG/PNG, up to 10&nbsp;MB)</span>
-        <input bind:this={backgroundInput} type="file" accept="image/png,image/jpeg,image/jpg" />
-      </label>
-      <p class="hint">The selected image is stored locally on this device only.</p>
-    </div>
-    <footer class="dialog-footer">
-      <button type="button" id="clear-background" class="ghost-button" on:click|preventDefault={clearBackground}>
-        Remove
-      </button>
-      <span class="spacer"></span>
-      <button type="button" id="cancel-background" on:click|preventDefault={cancelBackground}>
-        Cancel
-      </button>
-      <button type="submit" id="save-background">Save</button>
-    </footer>
-  </form>
-</dialog>
+<BackgroundPickerDialog
+  bind:this={backgroundDialogRef}
+  onSubmit={handleBackgroundSubmit}
+  onClear={handleBackgroundClear}
+  onCancel={handleBackgroundCancel}
+/>
