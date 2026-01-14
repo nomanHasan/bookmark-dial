@@ -64,13 +64,12 @@
     setsEqual,
     blobToObjectUrl,
   } from "./lib/utils.js";
-  import { createMockChrome } from "./lib/mockChrome.js";
-
-  const realChrome = typeof chrome !== "undefined" ? chrome : null;
-  const chromeApi = realChrome?.runtime?.id ? realChrome : createMockChrome();
-  const isExtensionContext = Boolean(realChrome?.runtime?.id);
-  const shouldPersistPreferences = Boolean(realChrome?.storage?.local) && isExtensionContext;
-  const shouldSyncPreferences = Boolean(realChrome?.storage?.sync) && isExtensionContext;
+  import {
+    chromeApi,
+    isExtensionContext,
+    shouldPersistPreferences,
+    shouldSyncPreferences,
+  } from "@/chromeApi";
 
   let statusMessage = "";
   let statusTone = "info";
