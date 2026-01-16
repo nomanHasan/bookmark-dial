@@ -7,11 +7,25 @@
    * sub-components for individual setting sections.
    */
 
-  import { THEME_OPTIONS, ACCENT_PREVIEW_COUNT, GRADIENT_PREVIEW_COUNT } from '../lib/constants.js';
+  import {
+    THEME_OPTIONS,
+    ACCENT_PREVIEW_COUNT,
+    GRADIENT_PREVIEW_COUNT,
+    TILE_SIZE_OPTIONS,
+    TILE_ICON_SHAPE_OPTIONS,
+    TILE_FONT_WEIGHT_OPTIONS,
+    TILE_FONT_SIZE_OPTIONS,
+    TILE_PADDING_OPTIONS,
+    TILE_BLUR_OPTIONS,
+    TILE_TEXT_CONTRAST_OPTIONS,
+    TILE_BG_LIGHTNESS_OPTIONS,
+    IMMERSIVE_OPACITY_OPTIONS,
+  } from '../lib/constants.js';
   import ThemeSelector from './ThemeSelector.svelte';
   import AccentPicker from './AccentPicker.svelte';
   import GradientPicker from './GradientPicker.svelte';
   import FolderSummaryPanel from './FolderSummaryPanel.svelte';
+  import SteppedSlider from './SteppedSlider.svelte';
 
   /** @type {boolean} */
   export let open = false;
@@ -77,6 +91,41 @@
   /** @type {() => void} */
   export let onOpenFolderModal = () => {};
 
+  // Tile customization handlers
+  /** @type {(size: string) => void} */
+  export let onTileSizeChange = () => {};
+
+  /** @type {(shape: string) => void} */
+  export let onTileIconShapeChange = () => {};
+
+  /** @type {(weight: number) => void} */
+  export let onTileFontWeightChange = () => {};
+
+  /** @type {(size: string) => void} */
+  export let onTileFontSizeChange = () => {};
+
+  /** @type {(padding: string) => void} */
+  export let onTilePaddingChange = () => {};
+
+  /** @type {(blur: number) => void} */
+  export let onTileBlurChange = () => {};
+
+  /** @type {(contrast: string) => void} */
+  export let onTileTextContrastChange = () => {};
+
+  /** @type {(lightness: number) => void} */
+  export let onTileBgLightnessChange = () => {};
+
+  /** @type {(showTitle: boolean) => void} */
+  export let onShowTitleChange = () => {};
+
+  // Immersive mode handlers
+  /** @type {(enabled: boolean) => void} */
+  export let onImmersiveEnabledChange = () => {};
+
+  /** @type {(opacity: number) => void} */
+  export let onImmersiveOpacityChange = () => {};
+
   let drawerRef;
 
   // Focus the drawer when it opens
@@ -131,23 +180,6 @@
   </section>
 
   <section class="settings-group">
-    <h3>Tile titles</h3>
-    <label
-      class="settings-toggle"
-      title="Adds a soft highlight behind each title for contrast."
-    >
-      <input
-        type="checkbox"
-        checked={settings.titleBackdrop}
-        on:change={(event) => onTitleBackdropChange(event.currentTarget.checked)}
-      />
-      <div class="settings-toggle__body">
-        <span class="settings-toggle__label">Rounded backdrop</span>
-      </div>
-    </label>
-  </section>
-
-  <section class="settings-group">
     <h3>Gradient background</h3>
     <GradientPicker
       options={visibleGradientOptions}
@@ -159,6 +191,144 @@
       onToggleShowAll={onToggleGradients}
       onCustomClick={onCustomBackgroundClick}
     />
+  </section>
+
+  <section class="settings-group">
+    <h3>Tile appearance</h3>
+    <SteppedSlider
+      label="Tile size"
+      description="Overall size of bookmark tiles in the grid"
+      options={TILE_SIZE_OPTIONS}
+      value={settings.tile?.size ?? 'medium'}
+      onChange={onTileSizeChange}
+    />
+    <SteppedSlider
+      label="Icon shape"
+      description="Border rounding of favicon icons"
+      options={TILE_ICON_SHAPE_OPTIONS}
+      value={settings.tile?.iconShape ?? '50%'}
+      onChange={onTileIconShapeChange}
+    />
+  </section>
+
+  <section class="settings-group">
+    <h3>Tile title</h3>
+    <label
+      class="settings-toggle"
+      title="Show or hide bookmark titles below icons."
+    >
+      <input
+        type="checkbox"
+        checked={settings.tile?.showTitle ?? true}
+        on:change={(event) => onShowTitleChange(event.currentTarget.checked)}
+      />
+      <div class="settings-toggle__body">
+        <span class="settings-toggle__label">Show title</span>
+        <span class="settings-toggle__description">
+          Display bookmark names below icons.
+        </span>
+      </div>
+    </label>
+    {#if settings.tile?.showTitle !== false}
+    <SteppedSlider
+      label="Font weight"
+      description="Thickness of title text"
+      options={TILE_FONT_WEIGHT_OPTIONS}
+      value={settings.tile?.fontWeight ?? 500}
+      onChange={onTileFontWeightChange}
+    />
+    <SteppedSlider
+      label="Font size"
+      description="Size of the bookmark title text"
+      options={TILE_FONT_SIZE_OPTIONS}
+      value={settings.tile?.fontSize ?? '0.9rem'}
+      onChange={onTileFontSizeChange}
+    />
+    <SteppedSlider
+      label="Title padding"
+      description="Space between text and backdrop edge"
+      options={TILE_PADDING_OPTIONS}
+      value={settings.tile?.padding ?? '0.2rem 0.6rem'}
+      onChange={onTilePaddingChange}
+    />
+    <SteppedSlider
+      label="Text visibility"
+      description="How bold/opaque the title text appears"
+      options={TILE_TEXT_CONTRAST_OPTIONS}
+      value={settings.tile?.textContrast ?? 'normal'}
+      onChange={onTileTextContrastChange}
+    />
+    <label
+      class="settings-toggle"
+      title="Adds a soft highlight behind each title for contrast."
+    >
+      <input
+        type="checkbox"
+        checked={settings.titleBackdrop}
+        on:change={(event) => onTitleBackdropChange(event.currentTarget.checked)}
+      />
+      <div class="settings-toggle__body">
+        <span class="settings-toggle__label">Rounded backdrop</span>
+        <span class="settings-toggle__description">
+          Adds a blurred pill behind text for better readability.
+        </span>
+      </div>
+    </label>
+    {/if}
+  </section>
+
+  {#if settings.titleBackdrop && settings.tile?.showTitle !== false}
+  <section class="settings-group">
+    <h3>Backdrop style</h3>
+    <SteppedSlider
+      label="Blur intensity"
+      description="Glass-like frosted blur effect strength"
+      options={TILE_BLUR_OPTIONS}
+      value={settings.tile?.blur ?? 8}
+      onChange={onTileBlurChange}
+    />
+    <SteppedSlider
+      label="Background intensity"
+      description="How visible the backdrop pill appears against your wallpaper"
+      options={TILE_BG_LIGHTNESS_OPTIONS}
+      value={settings.tile?.bgLightness ?? 3}
+      onChange={onTileBgLightnessChange}
+    />
+  </section>
+  {/if}
+
+  <section class="settings-group">
+    <h3>Immersive mode</h3>
+    <label
+      class="settings-toggle"
+      title="Fade UI elements to reveal your background. Hover to interact."
+    >
+      <input
+        type="checkbox"
+        checked={settings.immersive?.enabled ?? false}
+        on:change={(event) => onImmersiveEnabledChange(event.currentTarget.checked)}
+      />
+      <div class="settings-toggle__body">
+        <span class="settings-toggle__label">Enable immersive mode</span>
+        <span class="settings-toggle__description">
+          Fade UI elements to reveal your background. Hover to interact.
+        </span>
+      </div>
+    </label>
+    {#if settings.immersive?.enabled}
+      <SteppedSlider
+        label="UI visibility"
+        description="How visible elements are when not hovered"
+        options={IMMERSIVE_OPACITY_OPTIONS}
+        value={settings.immersive?.opacity ?? 0.15}
+        onChange={onImmersiveOpacityChange}
+      />
+      {#if settings.immersive?.opacity === 0}
+        <p class="settings-warning">
+          UI is completely invisible. Use Esc key to access settings.
+        </p>
+      {/if}
+    {/if}
   </section>
 
   <section class="settings-group settings-group--folders">

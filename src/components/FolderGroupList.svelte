@@ -18,6 +18,9 @@
   export let compactHeader = true;
 
   /** @type {boolean} */
+  export let showTitle = true;
+
+  /** @type {boolean} */
   export let titleBackdrop = false;
 
   /** @type {string|null} */
@@ -72,6 +75,7 @@
     <FolderGroupColumn
       {group}
       {compactHeader}
+      {showTitle}
       {titleBackdrop}
       {openMenuId}
       {draggedBookmark}

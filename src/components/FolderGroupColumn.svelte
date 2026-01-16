@@ -15,6 +15,9 @@
   export let compactHeader = true;
 
   /** @type {boolean} */
+  export let showTitle = true;
+
+  /** @type {boolean} */
   export let titleBackdrop = false;
 
   /** @type {string|null} */
@@ -86,6 +89,7 @@
       {#each group.items as bookmark (bookmark.id)}
         <BookmarkTile
           {bookmark}
+          {showTitle}
           {titleBackdrop}
           menuOpen={openMenuId === bookmark.id}
           focused={false}
@@ -108,7 +112,9 @@
       <article class="tile add-tile" draggable="false">
         <button class="add-button" type="button" on:click={() => onAddShortcut(group.id)}>
           <span aria-hidden="true">+</span>
-          <div>Add shortcut</div>
+          {#if showTitle}
+            <div>Add shortcut</div>
+          {/if}
         </button>
       </article>
     </div>
@@ -121,7 +127,9 @@
       <article class="tile add-tile" draggable="false">
         <button class="add-button" type="button" on:click={() => onAddShortcut(group.id)}>
           <span aria-hidden="true">+</span>
-          <div>Add shortcut</div>
+          {#if showTitle}
+            <div>Add shortcut</div>
+          {/if}
         </button>
       </article>
     </div>

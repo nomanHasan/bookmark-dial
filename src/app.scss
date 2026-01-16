@@ -17,6 +17,17 @@
   --page-background-dark: radial-gradient(circle at 20% 20%, #0f172a 0%, #1e293b 40%, #020617 100%);
   --surface-elevated: rgba(255, 255, 255, 0.92);
   --surface-elevated-dark: rgba(15, 23, 42, 0.9);
+
+  /* Tile customization CSS custom properties */
+  --tile-width: 128px;
+  --tile-grid-min: 118px;
+  --tile-icon-radius: 50%;
+  --tile-font-weight: 500;
+  --tile-font-size: 0.9rem;
+  --tile-padding: 0.2rem 0.6rem;
+  --tile-blur: 8px;
+  --tile-text-color: hsla(222, 50%, 2%, 0.82);
+  --tile-bg-color: hsla(222, 50%, 85%, 0.1);
 }
 
 @mixin body-state($name, $root: false) {
@@ -733,7 +744,7 @@ main::-webkit-scrollbar {
 .grid {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(118px, 128px));
+  grid-template-columns: repeat(auto-fit, minmax(var(--tile-grid-min, 118px), var(--tile-width, 128px)));
   gap: var(--grid-gap);
   justify-content: center;
   justify-items: center;
@@ -850,10 +861,18 @@ main::-webkit-scrollbar {
 
 .tile {
   position: relative;
-  width: min(128px, 100%);
+  width: min(var(--tile-width, 128px), 100%);
   display: flex;
   justify-content: center;
   transition: transform var(--transition-fast);
+
+  &--icon-only {
+    width: auto;
+
+    .tile-link {
+      gap: 0;
+    }
+  }
 }
 
 
@@ -873,7 +892,7 @@ main::-webkit-scrollbar {
   position: relative;
   width: var(--dial-icon-size);
   height: var(--dial-icon-size);
-  border-radius: 50%;
+  border-radius: var(--tile-icon-radius, 50%);
   background: var(--dial-color, var(--dial-bg));
   display: grid;
   place-items: center;
@@ -888,7 +907,7 @@ main::-webkit-scrollbar {
     width: 70%;
     height: 70%;
     object-fit: cover;
-    border-radius: 50%;
+    border-radius: var(--tile-icon-radius, 50%);
   }
 
   @include dark {
@@ -979,8 +998,8 @@ main::-webkit-scrollbar {
 
 .tile-title {
   text-align: center;
-  font-weight: 500;
-  font-size: 0.9rem;
+  font-weight: var(--tile-font-weight, 500);
+  font-size: var(--tile-font-size, 0.9rem);
   padding: 0 0.35rem;
   color: inherit;
   max-width: 100%;
@@ -993,15 +1012,17 @@ main::-webkit-scrollbar {
 .tile-title--pill {
   display: inline-block;
   margin: 0 auto;
-  padding: 0.2rem 0.6rem;
+  padding: var(--tile-padding, 0.2rem 0.6rem);
   border-radius: 999px;
-  background: hsla(222, 50%, 90%, 0.1);
-  color: hsla(222, 50%, 2%, 0.88);
+  background: var(--tile-bg-color, hsla(222, 50%, 85%, 0.1));
+  color: var(--tile-text-color, hsla(222, 50%, 2%, 0.82));
+  font-weight: var(--tile-font-weight, 500);
+  font-size: var(--tile-font-size, 0.9rem);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  backdrop-filter: saturate(140%) blur(8px);
+  backdrop-filter: saturate(140%) blur(var(--tile-blur, 8px));
   box-shadow: 0 0 0 1px hsla(222, 47%, 11%, 0.06);
 }
 
@@ -1013,14 +1034,14 @@ main::-webkit-scrollbar {
 
 @include dark($root: true) {
   .tile-title--pill {
-    background: hsla(222, 50%, 10%, 0.1);
-    color: hsla(210, 40%, 98%, 0.94);
+    background: var(--tile-bg-color, hsla(222, 50%, 20%, 0.22));
+    color: var(--tile-text-color, hsla(210, 40%, 98%, 0.78));
     box-shadow: 0 0 0 1px hsla(0, 0%, 100%, 0.08);
   }
 
   .tile:hover .tile-title--pill,
   .tile:focus-within .tile-title--pill {
-    background: hsla(222, 50%, 10%, 0.2);
+    background: var(--tile-bg-color, hsla(222, 50%, 20%, 0.28));
     box-shadow: 0 0 0 1px hsla(0, 0%, 100%, 0.12);
   }
 }
@@ -1391,6 +1412,191 @@ body.dark #clear-background:focus-visible {
   }
 }
 
+/* SteppedSlider Component Styles */
+.stepped-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  &__label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: inherit;
+  }
+
+  &__value {
+    font-size: 0.82rem;
+    color: var(--accent-color);
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    background: var(--accent-color-soft);
+    border-radius: 999px;
+  }
+
+  &__description {
+    font-size: 0.78rem;
+    color: rgba(15, 23, 42, 0.55);
+    font-weight: 450;
+    line-height: 1.35;
+    margin-top: -0.1rem;
+
+    @include dark {
+      color: rgba(226, 232, 240, 0.55);
+    }
+  }
+
+  &__track-wrapper {
+    position: relative;
+    height: 24px;
+    display: flex;
+    align-items: center;
+  }
+
+  &__dots {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 9px;
+    right: 9px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  &__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(15, 23, 42, 0.2);
+    cursor: pointer;
+    pointer-events: auto;
+    transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    padding: 0;
+    flex-shrink: 0;
+
+    &:hover {
+      background: rgba(15, 23, 42, 0.4);
+      transform: scale(1.4);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--accent-color-soft);
+      outline-offset: 2px;
+    }
+
+    &--passed {
+      background: var(--accent-color);
+      opacity: 0.45;
+    }
+
+    &--active {
+      background: var(--accent-color);
+      opacity: 1;
+      transform: scale(1.5);
+      box-shadow: 0 0 0 3px var(--accent-color-soft);
+    }
+
+    @include dark {
+      background: rgba(226, 232, 240, 0.25);
+
+      &:hover {
+        background: rgba(226, 232, 240, 0.45);
+      }
+
+      &--passed {
+        background: var(--accent-color);
+        opacity: 0.55;
+      }
+
+      &--active {
+        background: var(--accent-color);
+        opacity: 1;
+      }
+    }
+  }
+
+  input[type="range"] {
+    width: 100%;
+    height: 24px;
+    accent-color: var(--accent-color);
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    position: relative;
+    z-index: 2;
+    margin: 0;
+
+    &::-webkit-slider-runnable-track {
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(15, 23, 42, 0.1);
+    }
+
+    &::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent-color);
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      border: 2px solid white;
+      margin-top: -7px;
+    }
+
+    &::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    &::-moz-range-track {
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(15, 23, 42, 0.1);
+    }
+
+    &::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border: 2px solid white;
+      border-radius: 50%;
+      background: var(--accent-color);
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    }
+
+    @include dark {
+      &::-webkit-slider-runnable-track {
+        background: rgba(226, 232, 240, 0.15);
+      }
+
+      &::-webkit-slider-thumb {
+        border-color: rgba(15, 23, 42, 0.8);
+      }
+
+      &::-moz-range-track {
+        background: rgba(226, 232, 240, 0.15);
+      }
+
+      &::-moz-range-thumb {
+        border-color: rgba(15, 23, 42, 0.8);
+      }
+    }
+  }
+}
+
 /* Skeleton Loading UI */
 @keyframes shimmer {
   0% {
@@ -1410,7 +1616,7 @@ body.dark #clear-background:focus-visible {
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
-  width: min(128px, 100%);
+  width: min(var(--tile-width, 128px), 100%);
 }
 
 .skeleton-icon {
@@ -1464,5 +1670,81 @@ body.dark {
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
     animation-delay: 0.1s;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMMERSIVE MODE
+// ═══════════════════════════════════════════════════════════════════════════
+
+body.immersive {
+  // Main UI elements fade to selected opacity
+  .grid,
+  .folder-section,
+  .add-button,
+  .search-bar {
+    opacity: var(--immersive-opacity-setting, 0.15);
+    transition: opacity 280ms ease-out;
+
+    &:hover,
+    &:focus-within {
+      opacity: 1;
+      transition: opacity 180ms ease-in;
+    }
+  }
+
+  // Settings button slightly more visible for discoverability
+  .icon-button {
+    opacity: calc(var(--immersive-opacity-setting, 0.15) + 0.15);
+    transition: opacity 280ms ease-out;
+
+    &:hover,
+    &:focus-within {
+      opacity: 1;
+      transition: opacity 180ms ease-in;
+    }
+  }
+
+  // Grid hover reveals all contents
+  .grid:hover,
+  .grid:focus-within {
+    .tile,
+    .add-button {
+      opacity: 1;
+    }
+  }
+
+  // Focus rings ALWAYS visible (accessibility)
+  .tile--focused .tile-icon {
+    opacity: 1;
+    box-shadow: 0 0 0 3px var(--color-primary, #3b82f6),
+                0 16px 28px rgba(15, 23, 42, 0.3);
+  }
+
+  // Focused tile should be fully visible
+  .tile--focused {
+    opacity: 1 !important;
+  }
+
+  // Dragging tiles remain visible
+  &.dragging .grid {
+    opacity: 1;
+  }
+}
+
+// Warning text style for settings
+.settings-warning {
+  font-size: 0.8rem;
+  color: #b45309;
+  background: #fef3c7;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  margin-top: 0.5rem;
+}
+
+@include dark {
+  .settings-warning {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.15);
   }
 }

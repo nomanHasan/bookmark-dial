@@ -50,6 +50,12 @@
     DEFAULT_SYNC_PREFERENCES,
     GRADIENT_PREVIEW_COUNT,
     ACCENT_PREVIEW_COUNT,
+    TILE_SIZE_OPTIONS,
+    TILE_BG_LIGHTNESS_OPTIONS,
+    TILE_TEXT_CONTRAST_OPTIONS,
+    DEFAULT_TILE_SETTINGS,
+    IMMERSIVE_OPACITY_OPTIONS,
+    DEFAULT_IMMERSIVE_SETTINGS,
   } from "./lib/constants.js";
   import {
     normalizeUrl,
@@ -225,6 +231,13 @@
           }
           if (settingsOpen) {
             closeSettings();
+            return;
+          }
+          // Immersive mode: Esc opens settings as escape hatch
+          if (settings.immersive?.enabled && !settingsOpen) {
+            settingsOpen = true;
+            event.stopPropagation();
+            return;
           }
           return;
         }
@@ -233,6 +246,13 @@
         if (event.key === "/" && settings.enableBookmarkSearch && !event.ctrlKey && !event.metaKey) {
           event.preventDefault();
           bookmarkSearchVisible = true;
+          return;
+        }
+
+        // Keyboard shortcut to toggle immersive mode (I key)
+        if (event.key === "i" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          toggleImmersiveMode();
           return;
         }
 
@@ -299,6 +319,7 @@
       }
       if (typeof document !== "undefined") {
         document.body.classList.remove("settings-open");
+        document.body.classList.remove("immersive");
       }
       cleanupFns.forEach((fn) => fn?.());
     };
@@ -316,6 +337,8 @@
       enableBookmarkSearch: DEFAULT_SETTINGS.enableBookmarkSearch,
       enableTopSites: DEFAULT_SETTINGS.enableTopSites,
       lastShortcutFolderId: DEFAULT_SETTINGS.lastShortcutFolderId,
+      tile: { ...DEFAULT_TILE_SETTINGS },
+      immersive: { ...DEFAULT_IMMERSIVE_SETTINGS },
     };
   }
 
@@ -378,6 +401,30 @@
         ? stored.enableTopSites
         : DEFAULT_SETTINGS.enableTopSites;
     const lastShortcutFolderId = stored.lastShortcutFolderId ?? DEFAULT_SETTINGS.lastShortcutFolderId;
+
+    // Merge tile settings with defaults for migration
+    const storedTile = stored.tile ?? {};
+    const tile = {
+      size: storedTile.size ?? DEFAULT_TILE_SETTINGS.size,
+      iconShape: storedTile.iconShape ?? DEFAULT_TILE_SETTINGS.iconShape,
+      fontWeight: typeof storedTile.fontWeight === "number" ? storedTile.fontWeight : DEFAULT_TILE_SETTINGS.fontWeight,
+      fontSize: storedTile.fontSize ?? DEFAULT_TILE_SETTINGS.fontSize,
+      padding: storedTile.padding ?? DEFAULT_TILE_SETTINGS.padding,
+      blur: typeof storedTile.blur === "number" ? storedTile.blur : DEFAULT_TILE_SETTINGS.blur,
+      textContrast: storedTile.textContrast ?? DEFAULT_TILE_SETTINGS.textContrast,
+      bgLightness: typeof storedTile.bgLightness === "number" ? storedTile.bgLightness : DEFAULT_TILE_SETTINGS.bgLightness,
+      showTitle: typeof storedTile.showTitle === "boolean" ? storedTile.showTitle : DEFAULT_TILE_SETTINGS.showTitle,
+    };
+    const hasTileSettings = stored.tile !== undefined;
+
+    // Merge immersive mode settings with defaults for migration
+    const storedImmersive = stored.immersive ?? {};
+    const immersive = {
+      enabled: typeof storedImmersive.enabled === "boolean" ? storedImmersive.enabled : DEFAULT_IMMERSIVE_SETTINGS.enabled,
+      opacity: typeof storedImmersive.opacity === "number" ? storedImmersive.opacity : DEFAULT_IMMERSIVE_SETTINGS.opacity,
+    };
+    const hasImmersiveSettings = stored.immersive !== undefined;
+
     const folderSelection = normalizeFolderSelection(stored.folderSelection);
     const selectionChanged =
       !arraysEqual(folderSelection.selectedIds, stored.folderSelection?.selectedIds ?? []) ||
@@ -389,6 +436,8 @@
       gradientId !== (stored.background?.gradientId ?? DEFAULT_SETTINGS.background.gradientId) ||
       !hasTitleBackdrop ||
       !hasMergePreference ||
+      !hasTileSettings ||
+      !hasImmersiveSettings ||
       folderColumnWidth !== stored.folderColumnWidth ||
       compactFolderHeader !== stored.compactFolderHeader ||
       enableBookmarkSearch !== stored.enableBookmarkSearch ||
@@ -410,6 +459,8 @@
         enableBookmarkSearch,
         enableTopSites,
         lastShortcutFolderId,
+        tile,
+        immersive,
       },
       folderSelection,
       changed: preferenceChanged || selectionChanged || (stored.version ?? STORAGE_VERSION) !== STORAGE_VERSION,
@@ -518,9 +569,17 @@
 
     if (normalized === "system" && media) {
       document.body.classList.toggle("dark", media.matches);
+      // Re-apply tile colors after theme change
+      if (settings?.tile) {
+        applyTileColors(settings.tile.textContrast, settings.tile.bgLightness);
+      }
       if (!removeSystemThemeListener) {
         const handler = (event) => {
           document.body.classList.toggle("dark", event.matches);
+          // Re-apply tile colors when system theme changes
+          if (settings?.tile) {
+            applyTileColors(settings.tile.textContrast, settings.tile.bgLightness);
+          }
         };
         if (typeof media.addEventListener === "function") {
           media.addEventListener("change", handler);
@@ -541,6 +600,10 @@
         removeSystemThemeListener = null;
       }
       document.body.classList.toggle("dark", normalized === "dark");
+      // Re-apply tile colors after theme change
+      if (settings?.tile) {
+        applyTileColors(settings.tile.textContrast, settings.tile.bgLightness);
+      }
     }
 
     document.body.dataset.theme = normalized;
@@ -568,6 +631,79 @@
     root.style.setProperty("--page-background-dark", gradient.gradients.dark);
   }
 
+  function applyTileSettings(tileSettings) {
+    if (typeof document === "undefined" || !tileSettings) {
+      return;
+    }
+    const root = document.documentElement;
+
+    // Tile size
+    const sizeOption = TILE_SIZE_OPTIONS.find((opt) => opt.value === tileSettings.size);
+    if (sizeOption) {
+      root.style.setProperty("--tile-width", `${sizeOption.width}px`);
+      root.style.setProperty("--tile-grid-min", `${sizeOption.gridMin}px`);
+    }
+
+    // Icon shape (border-radius)
+    root.style.setProperty("--tile-icon-radius", tileSettings.iconShape);
+
+    // Font weight
+    root.style.setProperty("--tile-font-weight", String(tileSettings.fontWeight));
+
+    // Font size
+    root.style.setProperty("--tile-font-size", tileSettings.fontSize);
+
+    // Padding
+    root.style.setProperty("--tile-padding", tileSettings.padding);
+
+    // Blur
+    root.style.setProperty("--tile-blur", `${tileSettings.blur}px`);
+
+    // Text and background colors (theme-aware)
+    applyTileColors(tileSettings.textContrast, tileSettings.bgLightness);
+  }
+
+  function applyTileColors(textContrast, bgLightness) {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const root = document.documentElement;
+    const isDark = document.body.classList.contains("dark");
+
+    // Text contrast alpha values - more dramatic range for dark mode visibility
+    const textAlphas = {
+      faint: isDark ? 0.35 : 0.4,
+      soft: isDark ? 0.55 : 0.58,
+      normal: isDark ? 0.78 : 0.75,
+      strong: isDark ? 0.9 : 0.88,
+      bold: isDark ? 0.98 : 0.96,
+    };
+    const textAlpha = textAlphas[textContrast] ?? textAlphas.normal;
+
+    // Background lightness - adjusted for better visibility in dark mode
+    // Light mode: higher = lighter bg; Dark mode: values are inverted
+    const lightnessOption = TILE_BG_LIGHTNESS_OPTIONS.find((opt) => opt.value === bgLightness);
+    const lightness = lightnessOption
+      ? isDark
+        ? lightnessOption.lightDark
+        : lightnessOption.lightLight
+      : isDark ? 20 : 85;
+    
+    // Alpha values for background - more visible range in dark mode
+    const bgAlpha = isDark
+      ? { 1: 0.08, 2: 0.14, 3: 0.22, 4: 0.32, 5: 0.45 }[bgLightness] ?? 0.22
+      : { 1: 0.04, 2: 0.07, 3: 0.1, 4: 0.15, 5: 0.22 }[bgLightness] ?? 0.1;
+
+    // Set CSS variables based on theme
+    if (isDark) {
+      root.style.setProperty("--tile-text-color", `hsla(210, 40%, 98%, ${textAlpha})`);
+      root.style.setProperty("--tile-bg-color", `hsla(220, 30%, ${lightness}%, ${bgAlpha})`);
+    } else {
+      root.style.setProperty("--tile-text-color", `hsla(222, 50%, 2%, ${textAlpha})`);
+      root.style.setProperty("--tile-bg-color", `hsla(222, 50%, ${lightness}%, ${bgAlpha})`);
+    }
+  }
+
   function schedulePersistPreferences() {
     if (!shouldPersistPreferences || !hasHydratedSettings || !hasHydratedSelection) {
       return;
@@ -586,6 +722,8 @@
       enableTopSites: settings.enableTopSites,
       lastShortcutFolderId: settings.lastShortcutFolderId,
       background: { ...settings.background },
+      tile: settings.tile ? { ...settings.tile } : undefined,
+      immersive: settings.immersive ? { ...settings.immersive } : undefined,
       folderSelection: {
         selectedIds: Array.from(selectedFolderIds),
         expandedIds: Array.from(expandedFolderIds),
@@ -713,6 +851,126 @@
     }
   }
 
+  // Tile customization handlers
+  function setTileSize(size) {
+    if (settings.tile?.size === size) {
+      return;
+    }
+    settings = {
+      ...settings,
+      tile: { ...settings.tile, size },
+    };
+  }
+
+  function setTileIconShape(iconShape) {
+    if (settings.tile?.iconShape === iconShape) {
+      return;
+    }
+    settings = {
+      ...settings,
+      tile: { ...settings.tile, iconShape },
+    };
+  }
+
+  function setTileFontWeight(fontWeight) {
+    if (settings.tile?.fontWeight === fontWeight) {
+      return;
+    }
+    settings = {
+      ...settings,
+      tile: { ...settings.tile, fontWeight },
+    };
+  }
+
+  function setTileFontSize(fontSize) {
+    if (settings.tile?.fontSize === fontSize) {
+      return;
+    }
+    settings = {
+      ...settings,
+      tile: { ...settings.tile, fontSize },
+    };
+  }
+
+  function setTilePadding(padding) {
+    if (settings.tile?.padding === padding) {
+      return;
+    }
+    settings = {
+      ...settings,
+      tile: { ...settings.tile, padding },
+    };
+  }
+
+  function setTileBlur(blur) {
+    if (settings.tile?.blur === blur) {
+      return;
+    }
+    settings = {
+      ...settings,
+      tile: { ...settings.tile, blur },
+    };
+  }
+
+  function setTileTextContrast(textContrast) {
+    if (settings.tile?.textContrast === textContrast) {
+      return;
+    }
+    settings = {
+      ...settings,
+      tile: { ...settings.tile, textContrast },
+    };
+  }
+
+  function setTileBgLightness(bgLightness) {
+    if (settings.tile?.bgLightness === bgLightness) {
+      return;
+    }
+    settings = {
+      ...settings,
+      tile: { ...settings.tile, bgLightness },
+    };
+  }
+
+  function setShowTitle(showTitle) {
+    if (settings.tile?.showTitle === showTitle) {
+      return;
+    }
+    settings = {
+      ...settings,
+      tile: { ...settings.tile, showTitle },
+    };
+  }
+
+  // Immersive mode handlers
+  function setImmersiveEnabled(enabled) {
+    const nextValue = Boolean(enabled);
+    if (settings.immersive?.enabled === nextValue) {
+      return;
+    }
+    settings = {
+      ...settings,
+      immersive: { ...settings.immersive, enabled: nextValue },
+    };
+    if (nextValue) {
+      addToast("Immersive Mode on. Hover to see bookmarks. Press Esc for settings.", "info", null, 4000);
+    }
+  }
+
+  function setImmersiveOpacity(opacity) {
+    if (settings.immersive?.opacity === opacity) {
+      return;
+    }
+    settings = {
+      ...settings,
+      immersive: { ...settings.immersive, opacity },
+    };
+  }
+
+  function toggleImmersiveMode() {
+    setImmersiveEnabled(!settings.immersive?.enabled);
+  }
+
   function selectGradient(gradientId) {
     const normalized = normalizeGradient(gradientId);
     const gradient = getGradient(normalized);
@@ -803,6 +1061,7 @@
     applyTheme(settings.theme);
     applyAccent(settings.accent);
     applyGradient(settings.background.gradientId);
+    applyTileSettings(settings.tile);
     if (needsInitialPersist || selectionNeedsPersist || hasHydratedSettings) {
       schedulePersistPreferences();
     }
@@ -813,6 +1072,20 @@
 
   $: if (typeof document !== "undefined") {
     document.body.classList.toggle("settings-open", settingsOpen);
+  }
+
+  // Immersive mode body class and CSS property
+  $: if (typeof document !== "undefined") {
+    const immersiveEnabled = settings.immersive?.enabled ?? false;
+    document.body.classList.toggle("immersive", immersiveEnabled);
+    if (immersiveEnabled) {
+      document.documentElement.style.setProperty(
+        "--immersive-opacity-setting",
+        String(settings.immersive?.opacity ?? 0.15)
+      );
+    } else {
+      document.documentElement.style.removeProperty("--immersive-opacity-setting");
+    }
   }
 
   // Set up ResizeObserver when gridRef becomes available
@@ -1548,6 +1821,16 @@
   function handleExternalPreferences(preferences) {
     const merged = mergeStoredPreferences(preferences);
     const nextSettings = merged.settings;
+    const tileChanged =
+      nextSettings.tile?.size !== settings.tile?.size ||
+      nextSettings.tile?.iconShape !== settings.tile?.iconShape ||
+      nextSettings.tile?.fontWeight !== settings.tile?.fontWeight ||
+      nextSettings.tile?.fontSize !== settings.tile?.fontSize ||
+      nextSettings.tile?.padding !== settings.tile?.padding ||
+      nextSettings.tile?.blur !== settings.tile?.blur ||
+      nextSettings.tile?.textContrast !== settings.tile?.textContrast ||
+      nextSettings.tile?.bgLightness !== settings.tile?.bgLightness ||
+      nextSettings.tile?.showTitle !== settings.tile?.showTitle;
     const settingsChanged =
       nextSettings.theme !== settings.theme ||
       nextSettings.accent !== settings.accent ||
@@ -1558,12 +1841,15 @@
       nextSettings.folderColumnWidth !== settings.folderColumnWidth ||
       nextSettings.compactFolderHeader !== settings.compactFolderHeader ||
       nextSettings.enableBookmarkSearch !== settings.enableBookmarkSearch ||
-      nextSettings.enableTopSites !== settings.enableTopSites;
+      nextSettings.enableTopSites !== settings.enableTopSites ||
+      nextSettings.lastShortcutFolderId !== settings.lastShortcutFolderId ||
+      tileChanged;
     if (settingsChanged) {
       settings = {
         ...settings,
         ...nextSettings,
         background: { ...nextSettings.background },
+        tile: nextSettings.tile ? { ...nextSettings.tile } : settings.tile,
       };
     }
 
@@ -2491,6 +2777,17 @@
     onToggleAccents={toggleAccentOptions}
     onToggleGradients={toggleGradientOptions}
     onOpenFolderModal={openFolderModal}
+    onTileSizeChange={setTileSize}
+    onTileIconShapeChange={setTileIconShape}
+    onTileFontWeightChange={setTileFontWeight}
+    onTileFontSizeChange={setTileFontSize}
+    onTilePaddingChange={setTilePadding}
+    onTileBlurChange={setTileBlur}
+    onTileTextContrastChange={setTileTextContrast}
+    onTileBgLightnessChange={setTileBgLightness}
+    onShowTitleChange={setShowTitle}
+    onImmersiveEnabledChange={setImmersiveEnabled}
+    onImmersiveOpacityChange={setImmersiveOpacity}
   />
 
   <div
@@ -2530,6 +2827,7 @@
         bookmarks={filteredBookmarks}
         {topSites}
         showTopSites={settings.enableTopSites}
+        showTitle={settings.tile?.showTitle ?? true}
         titleBackdrop={settings.titleBackdrop}
         focusedIndex={focusedBookmarkIndex}
         {openMenuId}
@@ -2555,6 +2853,7 @@
         groups={filteredFolderGroups}
         columnWidth={settings.folderColumnWidth}
         compactHeader={settings.compactFolderHeader}
+        showTitle={settings.tile?.showTitle ?? true}
         titleBackdrop={settings.titleBackdrop}
         {openMenuId}
         {draggedBookmark}

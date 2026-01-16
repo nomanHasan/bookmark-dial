@@ -21,6 +21,9 @@
   export let showTopSites = false;
 
   /** @type {boolean} */
+  export let showTitle = true;
+
+  /** @type {boolean} */
   export let titleBackdrop = false;
 
   /** @type {number} */
@@ -99,6 +102,7 @@
   {#each bookmarks as bookmark, index (bookmark.id)}
     <BookmarkTile
       {bookmark}
+      {showTitle}
       {titleBackdrop}
       menuOpen={openMenuId === bookmark.id}
       focused={focusedIndex === index}
@@ -122,6 +126,7 @@
     {#each topSites as site, siteIndex (site.id)}
       <BookmarkTile
         bookmark={site}
+        {showTitle}
         {titleBackdrop}
         menuOpen={false}
         focused={focusedIndex === bookmarks.length + siteIndex}
@@ -144,9 +149,11 @@
     {/each}
   {/if}
   <article class="tile add-tile" draggable="false">
-    <button class="add-button" type="button" on:click={onAddShortcut} aria-label="Add new bookmark shortcut">
+    <button class="add-button" type="button" on:click={() => onAddShortcut()} aria-label="Add new bookmark shortcut">
       <span aria-hidden="true">+</span>
-      <div>Add shortcut</div>
+      {#if showTitle}
+        <div>Add shortcut</div>
+      {/if}
     </button>
   </article>
 </div>

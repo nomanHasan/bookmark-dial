@@ -395,13 +395,28 @@ export const DEFAULT_SETTINGS = {
     mode: "gradient",
     gradientId: DEFAULT_GRADIENT?.id ?? GRADIENT_OPTIONS[0].id,
   },
-  titleBackdrop: false,
+  titleBackdrop: true,
   mergeAllBookmarks: true,
   folderColumnWidth: 1170,
   compactFolderHeader: true,
   enableBookmarkSearch: false,
   enableTopSites: false,
   lastShortcutFolderId: null,
+  tile: {
+    size: "medium",
+    iconShape: "50%",
+    fontWeight: 500,
+    fontSize: "0.9rem",
+    padding: "0.2rem 0.6rem",
+    blur: 8,
+    textContrast: "normal",
+    bgLightness: 3,
+    showTitle: true,
+  },
+  immersive: {
+    enabled: false,
+    opacity: 0.15,
+  },
 };
 
 export const DEFAULT_SYNC_PREFERENCES = {
@@ -412,3 +427,118 @@ export const DEFAULT_SYNC_PREFERENCES = {
 
 export const GRADIENT_PREVIEW_COUNT = 6;
 export const ACCENT_PREVIEW_COUNT = 10;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TILE CUSTOMIZATION OPTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Tile size presets - controls both tile width and grid column sizing */
+export const TILE_SIZE_OPTIONS = [
+  { value: "tiny", label: "Tiny", width: 80, gridMin: 70 },
+  { value: "small", label: "Small", width: 100, gridMin: 90 },
+  { value: "medium", label: "Medium", width: 128, gridMin: 118 },
+  { value: "large", label: "Large", width: 156, gridMin: 146 },
+  { value: "extra-large", label: "Extra Large", width: 184, gridMin: 174 },
+];
+
+/** Icon shape presets - controls border radius of tile icons */
+export const TILE_ICON_SHAPE_OPTIONS = [
+  { value: "0%", label: "Square" },
+  { value: "12%", label: "Soft" },
+  { value: "24%", label: "Rounded" },
+  { value: "38%", label: "Pill" },
+  { value: "50%", label: "Circle" },
+];
+
+/** Font weight presets for tile titles */
+export const TILE_FONT_WEIGHT_OPTIONS = [
+  { value: 400, label: "Light" },
+  { value: 450, label: "Normal" },
+  { value: 500, label: "Medium" },
+  { value: 600, label: "Semibold" },
+  { value: 700, label: "Bold" },
+];
+
+/** Font size presets for tile titles */
+export const TILE_FONT_SIZE_OPTIONS = [
+  { value: "0.75rem", label: "Tiny" },
+  { value: "0.825rem", label: "Small" },
+  { value: "0.9rem", label: "Regular" },
+  { value: "1rem", label: "Medium" },
+  { value: "1.1rem", label: "Large" },
+];
+
+/** Padding presets for tile title backdrop */
+export const TILE_PADDING_OPTIONS = [
+  { value: "0.1rem 0.35rem", label: "Minimal" },
+  { value: "0.15rem 0.5rem", label: "Compact" },
+  { value: "0.2rem 0.6rem", label: "Comfortable" },
+  { value: "0.28rem 0.75rem", label: "Spacious" },
+  { value: "0.35rem 0.9rem", label: "Roomy" },
+];
+
+/** Blur intensity presets for backdrop effect */
+export const TILE_BLUR_OPTIONS = [
+  { value: 0, label: "None" },
+  { value: 4, label: "Subtle" },
+  { value: 8, label: "Glass" },
+  { value: 14, label: "Frosted" },
+  { value: 20, label: "Heavy" },
+];
+
+/** Text contrast presets - controls text opacity/visibility */
+export const TILE_TEXT_CONTRAST_OPTIONS = [
+  { value: "faint", label: "Faint" },
+  { value: "soft", label: "Soft" },
+  { value: "normal", label: "Normal" },
+  { value: "strong", label: "Strong" },
+  { value: "bold", label: "Bold" },
+];
+
+/**
+ * Background lightness presets with theme-aware inversion.
+ * In light mode: higher lightness = lighter background
+ * In dark mode: values optimized for visibility on dark backgrounds
+ */
+export const TILE_BG_LIGHTNESS_OPTIONS = [
+  { value: 1, label: "Whisper", lightLight: 97, lightDark: 75 },
+  { value: 2, label: "Muted", lightLight: 92, lightDark: 65 },
+  { value: 3, label: "Balanced", lightLight: 85, lightDark: 55 },
+  { value: 4, label: "Visible", lightLight: 75, lightDark: 50 },
+  { value: 5, label: "Prominent", lightLight: 60, lightDark: 45 },
+];
+
+/** Default tile customization settings */
+export const DEFAULT_TILE_SETTINGS = {
+  size: "medium",
+  iconShape: "50%",
+  fontWeight: 500,
+  fontSize: "0.9rem",
+  padding: "0.2rem 0.6rem",
+  blur: 8,
+  textContrast: "normal",
+  bgLightness: 3,
+  showTitle: true,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMMERSIVE MODE OPTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Immersive mode opacity presets - controls UI visibility when immersive mode is enabled.
+ * Lower values = more transparent, allowing background to show through.
+ */
+export const IMMERSIVE_OPACITY_OPTIONS = [
+  { value: 0, label: "Invisible" },
+  { value: 0.15, label: "Ghost" },
+  { value: 0.3, label: "Shadow" },
+  { value: 0.45, label: "Subtle" },
+  { value: 0.6, label: "Soft" },
+];
+
+/** Default immersive mode settings */
+export const DEFAULT_IMMERSIVE_SETTINGS = {
+  enabled: false,
+  opacity: 0.15, // Default to "Ghost"
+};

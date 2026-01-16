@@ -1,5 +1,6 @@
 <script>
   export let bookmark;
+  export let showTitle = true;
   export let titleBackdrop = false;
   export let menuOpen = false;
   export let focused = false;
@@ -126,6 +127,7 @@
   class:tile--dragging={dragging}
   class:tile--drag-over={dragOver}
   class:tile--top-site={isTopSite}
+  class:tile--icon-only={!showTitle}
   draggable={isDraggable}
   on:contextmenu={handleContextMenu}
   on:dragstart={handleDragStart}
@@ -152,9 +154,11 @@
         <img src={faviconSrc} alt="" loading="lazy" on:error={handleImageError} />
       {/if}
     </div>
+    {#if showTitle}
     <div class="tile-title" class:tile-title--pill={titleBackdrop}>
       {bookmark.displayTitle}
     </div>
+    {/if}
   </a>
   <div class="tile-actions">
     <button

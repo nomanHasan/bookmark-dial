@@ -118,7 +118,7 @@
           <label for="shortcut-folder">
             Folder
             <span class="form-hint">Where to save the shortcut</span>
-          </label>
+          </label> 
           <select id="shortcut-folder" bind:value={selectedFolderId} required>
             {#each folders as folder (folder.id)}
               <option value={folder.id}>
