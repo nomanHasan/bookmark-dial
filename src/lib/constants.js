@@ -408,6 +408,7 @@ export const DEFAULT_SETTINGS = {
     fontWeight: 500,
     fontSize: "0.9rem",
     padding: "0.2rem 0.6rem",
+    titleShape: "999px",
     blur: 8,
     textContrast: "normal",
     bgLightness: 3,
@@ -477,6 +478,15 @@ export const TILE_PADDING_OPTIONS = [
   { value: "0.35rem 0.9rem", label: "Roomy" },
 ];
 
+/** Title shape presets - controls border radius of title backdrop */
+export const TILE_TITLE_SHAPE_OPTIONS = [
+  { value: "0px", label: "Square" },
+  { value: "4px", label: "Soft" },
+  { value: "8px", label: "Rounded" },
+  { value: "16px", label: "Smooth" },
+  { value: "999px", label: "Pill" },
+];
+
 /** Blur intensity presets for backdrop effect */
 export const TILE_BLUR_OPTIONS = [
   { value: 0, label: "None" },
@@ -515,6 +525,7 @@ export const DEFAULT_TILE_SETTINGS = {
   fontWeight: 500,
   fontSize: "0.9rem",
   padding: "0.2rem 0.6rem",
+  titleShape: "999px",
   blur: 8,
   textContrast: "normal",
   bgLightness: 3,

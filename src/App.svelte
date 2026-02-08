@@ -54,6 +54,7 @@
     TILE_BG_LIGHTNESS_OPTIONS,
     TILE_TEXT_CONTRAST_OPTIONS,
     DEFAULT_TILE_SETTINGS,
+    TILE_TITLE_SHAPE_OPTIONS,
     IMMERSIVE_OPACITY_OPTIONS,
     DEFAULT_IMMERSIVE_SETTINGS,
   } from "./lib/constants.js";
@@ -410,6 +411,7 @@
       fontWeight: typeof storedTile.fontWeight === "number" ? storedTile.fontWeight : DEFAULT_TILE_SETTINGS.fontWeight,
       fontSize: storedTile.fontSize ?? DEFAULT_TILE_SETTINGS.fontSize,
       padding: storedTile.padding ?? DEFAULT_TILE_SETTINGS.padding,
+      titleShape: storedTile.titleShape ?? DEFAULT_TILE_SETTINGS.titleShape,
       blur: typeof storedTile.blur === "number" ? storedTile.blur : DEFAULT_TILE_SETTINGS.blur,
       textContrast: storedTile.textContrast ?? DEFAULT_TILE_SETTINGS.textContrast,
       bgLightness: typeof storedTile.bgLightness === "number" ? storedTile.bgLightness : DEFAULT_TILE_SETTINGS.bgLightness,
@@ -656,6 +658,9 @@
     // Padding
     root.style.setProperty("--tile-padding", tileSettings.padding);
 
+    // Title shape
+    root.style.setProperty("--tile-title-radius", tileSettings.titleShape);
+
     // Blur
     root.style.setProperty("--tile-blur", `${tileSettings.blur}px`);
 
@@ -899,6 +904,16 @@
     settings = {
       ...settings,
       tile: { ...settings.tile, padding },
+    };
+  }
+
+  function setTileTitleShape(titleShape) {
+    if (settings.tile?.titleShape === titleShape) {
+      return;
+    }
+    settings = {
+      ...settings,
+      tile: { ...settings.tile, titleShape },
     };
   }
 
@@ -1827,6 +1842,7 @@
       nextSettings.tile?.fontWeight !== settings.tile?.fontWeight ||
       nextSettings.tile?.fontSize !== settings.tile?.fontSize ||
       nextSettings.tile?.padding !== settings.tile?.padding ||
+      nextSettings.tile?.titleShape !== settings.tile?.titleShape ||
       nextSettings.tile?.blur !== settings.tile?.blur ||
       nextSettings.tile?.textContrast !== settings.tile?.textContrast ||
       nextSettings.tile?.bgLightness !== settings.tile?.bgLightness ||
@@ -2782,6 +2798,7 @@
     onTileFontWeightChange={setTileFontWeight}
     onTileFontSizeChange={setTileFontSize}
     onTilePaddingChange={setTilePadding}
+    onTileTitleShapeChange={setTileTitleShape}
     onTileBlurChange={setTileBlur}
     onTileTextContrastChange={setTileTextContrast}
     onTileBgLightnessChange={setTileBgLightness}

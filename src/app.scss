@@ -26,6 +26,7 @@
   --tile-font-size: 0.9rem;
   --tile-padding: 0.2rem 0.6rem;
   --tile-blur: 8px;
+  --tile-title-radius: 999px;
   --tile-text-color: hsla(222, 50%, 2%, 0.82);
   --tile-bg-color: hsla(222, 50%, 85%, 0.1);
 }
@@ -200,7 +201,7 @@ body.dark {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.3);
-  backdrop-filter: blur(3px);
+  // backdrop-filter: blur(3px);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--transition-fast);
@@ -1013,7 +1014,7 @@ main::-webkit-scrollbar {
   display: inline-block;
   margin: 0 auto;
   padding: var(--tile-padding, 0.2rem 0.6rem);
-  border-radius: 999px;
+  border-radius: var(--tile-title-radius, 999px);
   background: var(--tile-bg-color, hsla(222, 50%, 85%, 0.1));
   color: var(--tile-text-color, hsla(222, 50%, 2%, 0.82));
   font-weight: var(--tile-font-weight, 500);

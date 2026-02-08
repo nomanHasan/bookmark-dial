@@ -16,6 +16,7 @@
     TILE_FONT_WEIGHT_OPTIONS,
     TILE_FONT_SIZE_OPTIONS,
     TILE_PADDING_OPTIONS,
+    TILE_TITLE_SHAPE_OPTIONS,
     TILE_BLUR_OPTIONS,
     TILE_TEXT_CONTRAST_OPTIONS,
     TILE_BG_LIGHTNESS_OPTIONS,
@@ -106,6 +107,9 @@
 
   /** @type {(padding: string) => void} */
   export let onTilePaddingChange = () => {};
+
+  /** @type {(shape: string) => void} */
+  export let onTileTitleShapeChange = () => {};
 
   /** @type {(blur: number) => void} */
   export let onTileBlurChange = () => {};
@@ -250,6 +254,13 @@
       options={TILE_PADDING_OPTIONS}
       value={settings.tile?.padding ?? '0.2rem 0.6rem'}
       onChange={onTilePaddingChange}
+    />
+    <SteppedSlider
+      label="Title shape"
+      description="Corner rounding of the title backdrop"
+      options={TILE_TITLE_SHAPE_OPTIONS}
+      value={settings.tile?.titleShape ?? '999px'}
+      onChange={onTileTitleShapeChange}
     />
     <SteppedSlider
       label="Text visibility"
