@@ -18,7 +18,7 @@ Bookmark Dial ("the Extension") is a Chrome browser extension that replaces the 
 - **Extension Name:** Bookmark Dial
 - **Developer:** Bookmark Dial (Open-Source Project)
 - **Source Code:** Publicly available and open source
-- **Contact:** [Insert your contact email here]
+- **Contact:** nomanbinhossain@gmail.com
 
 ---
 
@@ -119,7 +119,7 @@ We do not share your data with anyone. Specifically:
 | Custom background image | Kept locally until you replace or remove it. | Remove the background in Settings or uninstall the Extension. |
 | Bookmarks created via the dial | Managed by Chrome's bookmark system. | Delete them from the Extension's context menu or from Chrome's Bookmark Manager. |
 
-**Uninstalling the Extension** automatically removes all data stored by the Extension (`chrome.storage.local`, `chrome.storage.sync` keys, and IndexedDB entries).
+**Uninstalling the Extension** removes data stored by the Extension (`chrome.storage.local`, `chrome.storage.sync` keys, and IndexedDB entries). Chrome handles sync deletion and may take time to propagate across devices.
 
 ---
 
@@ -131,7 +131,7 @@ Bookmark Dial implements the following security measures:
 - **No remote code execution** -- All code is bundled at build time; no `eval()`, `Function()`, or dynamic script loading.
 - **No content scripts** -- The Extension does not inject code into any web page.
 - **Sandboxed storage** -- IndexedDB, local storage, and sync storage are isolated to the Extension's origin.
-- **Minimal permissions** -- Only the four permissions strictly required for functionality are requested (`bookmarks`, `storage`, `topSites`, `favicon`).
+- **Minimal permissions** -- We request `bookmarks`, `storage`, `favicon`, and `topSites`. The `topSites` permission supports an optional feature that is disabled by default, and the API is not called unless you enable it.
 - **Open source** -- The complete source code is publicly auditable.
 
 ---
